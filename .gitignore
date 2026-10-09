@@ -13,7 +13,11 @@ __pycache__/
 mlruns/
 
 # Data
-data/
+/data/
 
 # VSCode
 .vscode/
+# Local environment and notebook files
+.venv/
+.ipynb_checkpoints/
+*.parquet
