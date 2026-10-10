@@ -21,3 +21,4 @@ mlruns/
 .venv/
 .ipynb_checkpoints/
 *.parquet
+.mypy_cache/

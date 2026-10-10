@@ -1,1 +1,3 @@
 ipykernel
+pandas-stubs
+types-requests
