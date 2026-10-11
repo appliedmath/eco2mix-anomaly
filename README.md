@@ -1,3 +1,121 @@
+# Grid anomaly detection (France, RTE eCO2mix)
+
+Flags abnormal behaviour in French national electricity consumption at
+30-minute resolution. Phase 1: one series, one complete chain
+(collect, process, train, API).
+
+## How it works
+
+Three detectors run side by side. Each one builds an expected value for
+every half-hour and flags the point when the gap is far from the usual
+gap (robust z-score with median and MAD, threshold `k = 4`).
+
+| Detector | Expected value | Idea |
+|---|---|---|
+| `mstl` (main) | trend + daily (48) + weekly (336) cycles | removes the cycles, flags the residual |
+| `forecast_gap` | RTE day-before forecast (`prevision_j1`) | baseline |
+| `last_week` | same half-hour 7 days earlier | baseline |
+
+## Data
+
+- RTE eCO2mix national, consolidated history from 2023-01-01 to 2026-08-31.
+- 30-minute grid, UTC, 64,268 points. Clock-change duplicates are dropped
+  and short gaps (up to 2 hours) are interpolated (`was_filled` marks them).
+- Contract: `data/processed/consumption_30min.parquet` with the columns
+  `timestamp_utc` (index), `consumption_mw`, `forecast_j1_mw`,
+  `forecast_j_mw`, `is_holiday`, `is_future`, `was_filled`.
+- Holidays use the French calendar (`holidays` package), by Paris date.
+
+## Results
+
+Evaluated on 47 reference events: 40 public holidays and 7 clock changes.
+Recall = share of events with at least one alert inside. False alarms =
+alert episodes outside every event, per week (consecutive alerts count once).
+
+| Detector | Recall | Holiday recall | Clock-change recall | False alarms / week |
+|---|---|---|---|---|
+| mstl | 0.745 (35/47) | 0.875 | 0.0 | 0.40 |
+| forecast_gap | 0.085 (4/47) | 0.10 | 0.0 | 0.13 |
+| last_week | 0.191 (9/47) | 0.225 | 0.0 | 0.41 |
+
+Reading these numbers:
+
+- The detectors do not know about holidays, so a holiday looks like a
+  Sunday on a weekday. A high holiday recall for `mstl` shows it reacts to
+  a known calendar effect. It does not prove it finds real incidents.
+- Clock-change recall is 0 for all three. The highest |z| on those days is
+  between 1.5 and 3.4, below the threshold of 4. The cause is not verified.
+- 74 of the 122 `mstl` alert episodes fall outside the reference events.
+  They are long (5 to 35 hours) and concentrated between November and
+  January. We have not checked what they are (cold snaps, school holidays
+  or something else), so "false alarm" is an upper bound here.
+- One threshold is used for the whole 2023-2026 history. The residual MAD
+  is 651 MW on the full history and 462 MW on June-August 2026, so the same
+  event gets a smaller z on the full history (14 July 2026, 07:00 UTC:
+  -8.2 with the June-August window, -6.0 with the full history).
+
+## Run it
+
+Python 3.12 with `uv`:
+
+```bash
+uv venv --python 3.12
+source .venv/bin/activate
+uv pip install -r requirements.lock.txt
+
+./run_pipeline.sh                      # collect -> process -> train
+python -m pytest -v                    # tests
+uvicorn src.api.main:app --reload      # API on http://127.0.0.1:8000/docs
+```
+
+`run_pipeline.sh` uses `src/data/collect.py` and `process.py` when they
+exist. Otherwise it uses `scripts/make_sample_parquet.py`, a stand-in that
+downloads the history and builds the contract file.
+
+## API
+
+The API only reads files written by the training step
+(`models/detections.parquet`, `models/metadata.json`) and the processed
+parquet. It never runs a model itself.
+
+| Endpoint | Returns |
+|---|---|
+| `GET /health` | status, `model_version`, `last_data` |
+| `GET /model-info` | training metadata and metrics |
+| `GET /anomalies?start=&end=` | flagged points; optional `detector`, `only_anomalies` |
+| `GET /series?start=&end=` | consumption and RTE forecasts |
+
+Dates are `YYYY-MM-DD`, UTC, both days included, at most 366 days.
+Invalid dates return 422.
+
+```bash
+curl "http://127.0.0.1:8000/anomalies?start=2026-07-14&end=2026-07-14"
+```
+
+## Known limitations
+
+- Evaluation is in-sample: thresholds are computed on the same data that
+  is scored, and MSTL sees the whole series.
+- Reference events are only holidays and clock changes. Heatwaves, cold
+  snaps, strikes and energy-saving periods are not in the list yet.
+- History only: no real-time collection, so `last_data` is 2026-08-31.
+- The 25 October 2026 clock change is not tested on live data.
+- No authentication on the API.
+- `models/` and `data/` are not in git: run `./run_pipeline.sh` first.
+
+## Layout
+
+- `src/data/`: collect and process (data half)
+- `src/models/`: MSTL detector, baselines, reference events, training
+- `src/api/`: FastAPI service
+- `flows/`, `streamlit_app/`, `notebooks/`: orchestration, dashboard, exploration
+- `scripts/`: stand-in data script, alarm inspection
+- `tests/`: unit tests
+- `config/`: reference events added by hand
+- `run_pipeline.sh`
+
+## Infrastructure notes (Prefect Docker image, MLflow, deployment)
+
 ## Prefect docker official image
 
 You can see : https://hub.docker.com/r/prefecthq/prefect/tags
