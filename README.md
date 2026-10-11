@@ -72,6 +72,21 @@ uvicorn src.api.main:app --reload      # API on http://127.0.0.1:8000/docs
 exist. Otherwise it uses `scripts/make_sample_parquet.py`, a stand-in that
 downloads the history and builds the contract file.
 
+## macOS note
+
+On macOS 27.0 the pinned `scipy 1.15.3` can fail: `import statsforecast`
+raises an ImportError (loading scipy's `_spropack` file). Workaround, after
+installing from the lock file:
+
+```bash
+uv pip install scipy==1.18.1
+```
+
+Do not change the lock file: `statsforecast 2.0.3` requires `scipy < 1.16`,
+so 1.18.1 is outside what `statsforecast` supports. On a Mac we only checked
+that the imports work; our own code uses `statsmodels` and its tests pass.
+Windows/WSL is not affected. Docker (Phase 2) will remove the problem.
+
 ## API
 
 The API only reads files written by the training step
