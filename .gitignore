@@ -21,4 +21,9 @@ mlruns/
 .venv/
 .ipynb_checkpoints/
 *.parquet
+
+# Model outputs and caches
+/models/
+.pytest_cache/
+.DS_Store
 .mypy_cache/
