@@ -26,3 +26,4 @@ mlruns/
 /models/
 .pytest_cache/
 .DS_Store
+.mypy_cache/

@@ -112,6 +112,7 @@ opentelemetry-semantic-conventions==0.66b1
 orjson==3.13.0
 packaging==26.3
 pandas==3.0.6
+pandas-stubs==3.0.5.260914
 parso==0.8.7
 pathspec==1.1.1
 patsy==1.0.3
@@ -186,6 +187,7 @@ tqdm==4.70.1
 traitlets==5.16.1
 triad==1.0.2
 typer==0.27.3
+types-requests==2.33.0.20261006
 typing-extensions==4.16.0
 typing-inspection==0.4.4
 tzdata==2026.5
