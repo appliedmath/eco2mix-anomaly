@@ -34,10 +34,10 @@ def to_30min_grid(raw: pd.DataFrame) -> pd.DataFrame:
     df = raw.sort_values("date_heure", kind="stable")               # stable: consolidated rows stay first
     df = df.drop_duplicates(subset="date_heure", keep="first")      # DST bug: doubled hour in March
     df = df.set_index("date_heure")[list(RENAME)].rename(columns=RENAME)
-    df = df[df.index.minute.isin([0, 30])]                          # history has consumption only at :00/:30
+    df = df[pd.DatetimeIndex(df.index).minute.isin([0, 30])]                          # history has consumption only at :00/:30
 
     grid = pd.date_range(df.index.min(), df.index.max(), freq="30min")
-    missing = len(grid.difference(df.index))                        # DST bug: lost hour in October
+    missing = len(grid.difference(pd.DatetimeIndex(df.index)))                        # DST bug: lost hour in October
     df = df.reindex(grid)
     df.index.name = "timestamp_utc"
     log.info("30-min grid: %d rows, %d half-hours were missing", len(df), missing)
@@ -56,7 +56,7 @@ def add_flags(df: pd.DataFrame) -> pd.DataFrame:
     df[cols] = df[cols].interpolate(limit=MAX_FILL_STEPS, limit_area="inside")
     df["was_filled"] = was_missing & df["consumption_mw"].notna()
 
-    local_dates = df.index.tz_convert("Europe/Paris").date          # holidays follow the French calendar
+    local_dates = pd.DatetimeIndex(df.index).tz_convert("Europe/Paris").date          # holidays follow the French calendar
     fr_holidays = holidays.France(years=range(df.index.min().year, df.index.max().year + 1))
     df["is_holiday"] = [d in fr_holidays for d in local_dates]
     return df
@@ -78,7 +78,7 @@ def validate(df: pd.DataFrame) -> list[str]:
     outside = past[(past < low) | (past > high)]
     if len(outside):
         problems.append(f"{len(outside)} values outside {low}-{high} MW")
-    filled_per_day = df["was_filled"].groupby(df.index.date).sum()
+    filled_per_day = df["was_filled"].groupby(pd.DatetimeIndex(df.index).date).sum()
     if (filled_per_day > MAX_FILL_STEPS).any():
         problems.append(f"more than {MAX_FILL_STEPS} filled half-hours on some days")
     return problems
