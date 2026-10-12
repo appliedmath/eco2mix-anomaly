@@ -6,6 +6,7 @@ from typing import Literal
 import pandas as pd
 from fastapi import Depends, FastAPI, HTTPException
 
+from src.models.anomaly_days import paris_day_bounds, summarize_days
 from src.models.model import load_model
 
 MODEL_DIR = os.environ.get("MODEL_DIR", "models")
@@ -115,3 +116,53 @@ def series(start: date, end: date, data=Depends(get_series_data)):
         }
         for row in d.itertuples()
     ]
+
+
+@app.get("/anomaly-day")
+def anomaly_day(
+    day: date,
+    detector: DetectorName = "mstl",
+    detections=Depends(get_detections),
+    data=Depends(get_series_data),
+):
+    """Was there an anomaly on this calendar day (Paris time)?"""
+    low, high = paris_day_bounds(day)
+    d = detections[(detections["detector"] == detector)
+                   & (detections["timestamp_utc"] >= low)
+                   & (detections["timestamp_utc"] < high)]
+    if d.empty:
+        raise HTTPException(status_code=404,
+                            detail=f"no data for {day.isoformat()}")
+
+    flagged = d[d["is_anomaly"]]
+    summary = summarize_days(flagged)
+    stamps = flagged["timestamp_utc"]
+    consumption = data["consumption_mw"].reindex(stamps).values
+    holiday = data["is_holiday"].reindex(d["timestamp_utc"]).fillna(False)
+
+    result = {
+        "day": day.isoformat(),
+        "detector": detector,
+        "was_anomaly": not flagged.empty,
+        "is_holiday": bool(holiday.any()),
+        "n_points": 0,
+        "n_episodes": 0,
+        "max_abs_z": None,
+        "peak_utc": None,
+        "points": [
+            {
+                "timestamp_utc": row.timestamp_utc.isoformat(),
+                "consumption_mw": num(consumption[i]),
+                "expected_mw": num(row.expected_mw),
+                "z_score": num(row.z_score),
+            }
+            for i, row in enumerate(flagged.itertuples())
+        ],
+    }
+    if not summary.empty:
+        top = summary.iloc[0]
+        result.update(n_points=int(top["n_points"]),
+                      n_episodes=int(top["n_episodes"]),
+                      max_abs_z=float(top["max_abs_z"]),
+                      peak_utc=top["peak_utc"])
+    return result
