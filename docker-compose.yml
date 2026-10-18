@@ -1,0 +1,58 @@
+# Phase 2: three services
+#   mlflow  - tracking server (runs, metrics, model files)
+#   trainer - one-off job: collect -> process -> train, logs to MLflow
+#   api     - FastAPI, reads what the trainer wrote
+# Start everything:  docker compose up --build
+# Retrain later:     docker compose run --rm trainer
+
+services:
+  mlflow:
+    image: ghcr.io/mlflow/mlflow:v3.17.0
+    command: >
+      mlflow server
+      --host 0.0.0.0 --port 5000
+      --backend-store-uri sqlite:////mlflow/mlflow.db
+      --artifacts-destination /mlflow/artifacts
+      --allowed-hosts mlflow,mlflow:5000,localhost,localhost:5000,127.0.0.1,127.0.0.1:5000
+      --workers 1
+    environment:
+      - MLFLOW_DISABLE_TELEMETRY=true
+    ports:
+      - "5000:5000"
+    volumes:
+      - ./mlflow:/mlflow
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:5000/health')"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  trainer:
+    build:
+      context: .
+      dockerfile: docker/trainer.Dockerfile
+    environment:
+      - MLFLOW_TRACKING_URI=http://mlflow:5000
+      - MLFLOW_DISABLE_TELEMETRY=true
+    volumes:
+      - ./data:/app/data
+      - ./models:/app/models
+    depends_on:
+      mlflow:
+        condition: service_healthy
+
+  api:
+    build:
+      context: .
+      dockerfile: docker/api.Dockerfile
+    environment:
+      - MODEL_DIR=/app/models
+      - DATA_PATH=/app/data/processed/consumption_30min.parquet
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./data:/app/data:ro
+      - ./models:/app/models:ro
+    depends_on:
+      trainer:
+        condition: service_completed_successfully

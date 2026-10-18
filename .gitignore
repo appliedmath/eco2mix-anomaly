@@ -27,3 +27,4 @@ mlruns/
 .pytest_cache/
 .DS_Store
 .mypy_cache/
+/mlflow/
