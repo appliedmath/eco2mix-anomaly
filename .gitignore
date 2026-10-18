@@ -13,7 +13,6 @@ __pycache__/
 mlruns/
 
 # Data
-/data/
 
 # VSCode
 .vscode/
