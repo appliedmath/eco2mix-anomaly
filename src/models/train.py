@@ -6,6 +6,7 @@ from src.models.anomaly_days import ANOMALY_DAYS, summarize_days
 from src.models.detect import DAY, WEEK, detect_mstl
 from src.models.events import build_reference_events, events_caught
 from src.models.model import fit_reference, save_model
+from src.models.tracking import log_run
 
 K = 4.0
 DATA = "data/processed/consumption_30min.parquet"
@@ -98,6 +99,8 @@ def main():
     # One row per (detector, Paris day) with at least one anomaly
     days = summarize_days(table, events)
     days.to_csv(ANOMALY_DAYS, index=False)
+
+    log_run(meta)
 
     print("Points:", len(y), "| weeks:", round(weeks, 1),
           "| events:", len(events))
