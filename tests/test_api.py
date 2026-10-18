@@ -127,3 +127,29 @@ def test_series_unpublished_consumption_is_null(client):
     last = response.json()[-1]
     assert last["consumption_mw"] is None
     assert last["is_future"] is True
+
+
+def test_anomaly_day_with_alert(client):
+    # INDEX[60] = 15 July 06:00 UTC = 08:00 Paris
+    response = client.get("/anomaly-day", params={"day": "2026-07-15"})
+    assert response.status_code == 200
+    body = response.json()
+    assert body["was_anomaly"] is True
+    assert body["n_points"] == 1
+    assert body["max_abs_z"] == 5.0
+    assert body["peak_utc"] == INDEX[60].isoformat()
+    assert body["points"][0]["consumption_mw"] == 1060.0
+
+
+def test_anomaly_day_without_alert(client):
+    response = client.get("/anomaly-day", params={
+        "day": "2026-07-15", "detector": "forecast_gap"})
+    body = response.json()
+    assert body["was_anomaly"] is False
+    assert body["points"] == []
+    assert body["max_abs_z"] is None
+
+
+def test_anomaly_day_outside_data_is_404(client):
+    response = client.get("/anomaly-day", params={"day": "2020-01-01"})
+    assert response.status_code == 404

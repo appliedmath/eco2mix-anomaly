@@ -1,0 +1,11 @@
+# What collect -> process -> train needs
+pandas==3.0.6
+numpy==2.4.6
+pyarrow==25.0.1
+joblib==1.6.0
+requests==2.34.2
+holidays==0.106
+statsmodels==0.15.0
+scipy==1.15.3
+patsy==1.0.3
+mlflow-skinny==3.17.0
