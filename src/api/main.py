@@ -1,6 +1,5 @@
 import os
 from datetime import date
-from functools import lru_cache
 from typing import Literal
 
 import pandas as pd
@@ -19,20 +18,31 @@ app = FastAPI(title="Grid anomaly detection")
 DetectorName = Literal["mstl", "forecast_gap", "last_week"]
 
 
-@lru_cache(maxsize=1)
+_cache: dict = {}
+
+
+def _read_if_changed(path: str, reader):
+    """Read a file again only when it changed on disk (e.g. after predict)."""
+    mtime = os.path.getmtime(path)
+    hit = _cache.get(path)
+    if hit is None or hit[0] != mtime:
+        _cache[path] = (mtime, reader(path))
+    return _cache[path][1]
+
+
 def get_meta() -> dict:
-    _, meta = load_model(MODEL_DIR)
-    return meta
+    return _read_if_changed(os.path.join(MODEL_DIR, "metadata.json"),
+                            lambda p: load_model(MODEL_DIR)[1])
 
 
-@lru_cache(maxsize=1)
 def get_detections():
-    return pd.read_parquet(os.path.join(MODEL_DIR, "detections.parquet"))
+    return _read_if_changed(os.path.join(MODEL_DIR, "detections.parquet"),
+                            pd.read_parquet)
 
 
-@lru_cache(maxsize=1)
 def get_series_data():
-    return pd.read_parquet(DATA_PATH).sort_index()
+    return _read_if_changed(DATA_PATH,
+                            lambda p: pd.read_parquet(p).sort_index())
 
 
 def num(value):

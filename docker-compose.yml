@@ -4,6 +4,8 @@
 #   api     - FastAPI, reads what the trainer wrote
 # Start everything:  docker compose up --build
 # Retrain later:     docker compose run --rm trainer
+# New data + score:  docker compose run --rm batch      (next 7 days)
+#                    docker compose run --rm batch sh batch.sh 1   (next day)
 
 services:
   mlflow:
@@ -42,6 +44,17 @@ services:
     depends_on:
       mlflow:
         condition: service_healthy
+
+  batch:
+    # Not started by 'up': run it on demand (later: on a schedule)
+    profiles: ["batch"]
+    build:
+      context: .
+      dockerfile: docker/trainer.Dockerfile
+    command: ["sh", "batch.sh"]
+    volumes:
+      - ./data:/app/data
+      - ./models:/app/models
 
   api:
     build:

@@ -10,6 +10,7 @@ RUN pip install --no-cache-dir -r requirements-trainer.txt
 
 COPY src/ src/
 COPY config/ config/
-COPY docker/train_pipeline.sh .
+COPY scripts/ scripts/
+COPY docker/train_pipeline.sh docker/batch.sh ./
 
 CMD ["sh", "train_pipeline.sh"]

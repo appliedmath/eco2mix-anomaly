@@ -153,3 +153,17 @@ def test_anomaly_day_without_alert(client):
 def test_anomaly_day_outside_data_is_404(client):
     response = client.get("/anomaly-day", params={"day": "2020-01-01"})
     assert response.status_code == 404
+
+
+def test_detections_reload_when_file_changes(tmp_path, monkeypatch):
+    import os
+    import src.api.main as api
+    monkeypatch.setattr(api, "MODEL_DIR", str(tmp_path))
+    path = tmp_path / "detections.parquet"
+    make_detections().to_parquet(path, index=False)
+    assert len(api.get_detections()) == 192
+    bigger = pd.concat([make_detections()] * 2, ignore_index=True)
+    bigger.to_parquet(path, index=False)
+    stat = os.stat(path)
+    os.utime(path, ns=(stat.st_atime_ns, stat.st_mtime_ns + 10**9))
+    assert len(api.get_detections()) == 384
