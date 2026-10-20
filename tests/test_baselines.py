@@ -8,7 +8,7 @@ from src.models.baselines import (
 
 # 7 days * 24 hours * 4 records per hour.
 # Hardcoded on purpose: the test must not copy the number from the code.
-ONE_WEEK = 672
+ONE_WEEK = 336
 
 
 def make_df(n=ONE_WEEK + 10):

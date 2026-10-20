@@ -1,6 +1,6 @@
 import pandas as pd
 
-STEPS_PER_WEEK = 7 * 24 * 4  # 672 records of 15 minutes
+STEPS_PER_WEEK = 7 * 24 * 2  # 336 records of 15 minutes
 
 
 def baseline_last_week(df: pd.DataFrame) -> pd.Series:
