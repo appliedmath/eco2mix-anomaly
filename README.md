@@ -1,186 +1,202 @@
-# Grid anomaly detection (France, RTE eCO2mix)
+# Grid anomaly detection (France, RTE éCO2mix)
 
-Flags abnormal behaviour in French national electricity consumption at
-30-minute resolution. Phase 1: one series, one complete chain
-(collect, process, train, API).
+Detects abnormal behaviour in French national electricity consumption at
+30-minute resolution, and runs the whole lifecycle as an MLOps pipeline:
+versioned data, tracked training, batch prediction on new data, and an API
+that serves the results.
 
-## How it works
+## Project status
 
-Three detectors run side by side. Each one builds an expected value for
-every half-hour and flags the point when the gap is far from the usual
-gap (robust z-score with median and MAD, threshold `k = 4`).
-
-| Detector | Expected value | Idea |
+| Phase | Content | Status |
 |---|---|---|
-| `mstl` (main) | trend + daily (48) + weekly (336) cycles | removes the cycles, flags the residual |
+| **1** | Scoping, objectives and metrics; RTE data collected and cleaned (UTC 30-minute grid, clock-change fix, validation); MSTL detector and two baselines evaluated on reference events; read-only FastAPI service; unit tests | ✅ done |
+| **2** | Docker services (MLflow, trainer, batch, API), MLflow tracking, DVC data versioning, 80/20 split with batch prediction on new data | ✅ done · promote-or-reject retraining in progress |
+| **3** | Airflow DAGs for batch prediction and retraining, API endpoints to trigger them, API security, CI with GitHub Actions | ⏳ next |
+| **4** | Prometheus + Grafana monitoring, drift detection, Streamlit dashboard | ⏳ planned |
+
+## Architecture
+
+```mermaid
+flowchart LR
+    RTE[(RTE éCO2mix API)] -->|collect + process| DATA[data/ processed + incoming<br/>versioned with DVC]
+    DATA --> TRAINER[trainer<br/>container]
+    TRAINER -->|params, metrics, model files| MLFLOW[mlflow<br/>tracking server :5000]
+    TRAINER -->|model + detections| MODELS[models/]
+    DATA --> BATCH[batch<br/>container]
+    MODELS --> BATCH
+    BATCH -->|new detections| MODELS
+    MODELS --> API[api<br/>FastAPI :8000]
+    DATA --> API
+    USER((user)) --> API
+```
+
+| Service | What it does | Runs |
+|---|---|---|
+| `mlflow` | Tracking server: every training run with its parameters, metrics and model files | always |
+| `trainer` | Job: downloads and cleans the data if missing, trains, logs to MLflow, writes `models/` | once, then exits |
+| `batch` | Job: new data arrives (next 7 days by default), the **saved** model scores only those half-hours | on demand |
+| `api` | FastAPI: serves stored results; re-reads files when they change (no restart needed) | always |
+
+Containers share the `data/` and `models/` folders. Each service has its own
+small image on `python:3.12-slim` with only the packages it needs.
+
+## How the detection works
+
+Three detectors build an expected value for every half-hour and flag a point
+when the gap is far from the usual gap:
+
+**z = (gap − median of gaps) / (1.4826 × MAD of gaps)**, flag when |z| > K, with **K = 4**.
+
+| Detector | Expected value | Role |
+|---|---|---|
+| `mstl` | trend + daily (48) + weekly (336) cycles, removed with MSTL | **main detector** |
 | `forecast_gap` | RTE day-before forecast (`prevision_j1`) | baseline |
 | `last_week` | same half-hour 7 days earlier | baseline |
 
+**Why K = 4:** the reference value for this "modified z-score" is 3.5
+(Iglewicz & Hoaglin, 1993, *How to Detect and Handle Outliers*). K = 4 is a
+little stricter to keep false alarms low (about 17,500 half-hours per year).
+A sweep over K = 2–6 confirms it gives the best balance between events caught
+and false alarms (K = 3: more events but more than twice as many false alarms).
+
 ## Data
 
-- RTE eCO2mix national, consolidated history from 2023-01-01 to 2026-08-31.
-- 30-minute grid, UTC, 64,268 points. Clock-change duplicates are dropped
-  and short gaps (up to 2 hours) are interpolated (`was_filled` marks them).
-- Contract: `data/processed/consumption_30min.parquet` with the columns
-  `timestamp_utc` (index), `consumption_mw`, `forecast_j1_mw`,
-  `forecast_j_mw`, `is_holiday`, `is_future`, `was_filled`.
-- Holidays use the French calendar (`holidays` package), by Paris date.
+- RTE éCO2mix national: consolidated/definitive history plus real-time data
+  (Opendatasoft exports, no API key).
+- 30-minute grid in UTC from 1 Jan 2023 to 12 Oct 2026 (66,258 measured
+  half-hours). Clock-change duplicates are dropped, gaps up to 2 hours are
+  interpolated and marked `was_filled`, rows after the last measurement are
+  RTE forecasts marked `is_future`.
+- French public holidays by Paris date (`holidays` package).
+- **80/20 split** to simulate new data: `data/processed/` holds 1 Jan 2023 →
+  8 Jan 2026 (training, 52,990 half-hours); `data/incoming/` holds 9 Jan →
+  13 Oct 2026 (13,342 half-hours) that "arrive" week by week.
+- All three folders (`raw`, `processed`, `incoming`) are versioned with **DVC**.
 
 ## Results
 
-Evaluated on 47 reference events: 40 public holidays and 7 clock changes.
+Evaluated on reference events (French public holidays and clock-change days).
 Recall = share of events with at least one alert inside. False alarms =
 alert episodes outside every event, per week (consecutive alerts count once).
 
-| Detector | Recall | Holiday recall | Clock-change recall | False alarms / week |
+| Detector | All data (47 events) | | 80% training part (39 events) | |
 |---|---|---|---|---|
-| mstl | 0.745 (35/47) | 0.875 | 0.0 | 0.40 |
-| forecast_gap | 0.085 (4/47) | 0.10 | 0.0 | 0.13 |
-| last_week | 0.191 (9/47) | 0.225 | 0.0 | 0.41 |
+| | Recall | False alarms / week | Recall | False alarms / week |
+| `mstl` | **0.745** (35/47) | 0.45 | **0.692** (27/39) | 0.51 |
+| `forecast_gap` | 0.085 (4/47) | 0.12 | 0.077 (3/39) | 0.16 |
+| `last_week` | 0.191 (9/47) | 0.46 | 0.154 (6/39) | 0.50 |
 
 Reading these numbers:
 
-- The detectors do not know about holidays, so a holiday looks like a
-  Sunday on a weekday. A high holiday recall for `mstl` shows it reacts to
-  a known calendar effect. It does not prove it finds real incidents.
-- Clock-change recall is 0 for all three. The highest |z| on those days is
-  between 1.5 and 3.4, below the threshold of 4. The cause is not verified.
-- 74 of the 122 `mstl` alert episodes fall outside the reference events.
-  They are long (5 to 35 hours) and concentrated between November and
-  January. We have not checked what they are (cold snaps, school holidays
-  or something else), so "false alarm" is an upper bound here.
-- One threshold is used for the whole 2023-2026 history. The residual MAD
-  is 651 MW on the full history and 462 MW on June-August 2026, so the same
-  event gets a smaller z on the full history (14 July 2026, 07:00 UTC:
-  -8.2 with the June-August window, -6.0 with the full history).
+- The detectors don't know about holidays: a holiday on a weekday looks like
+  a Sunday. `mstl` catches most holidays (holiday recall 0.875), which shows
+  it reacts to a known calendar effect — not that it finds real incidents.
+  Example: 14 July 2024 (a Sunday) is not flagged, 14 July 2026 (a Tuesday) is.
+- Clock-change recall is 0 for all three detectors (highest |z| on those days
+  is between 1.5 and 3.4).
+- Many `mstl` alert episodes outside the reference events are long and fall
+  between November and January (cold weather is a likely cause, not checked),
+  so "false alarm" is an upper bound.
+- `last_week` over-flags when the weather changes between two weeks (first
+  batch, 9–15 Jan 2026: 142 flagged half-hours vs 23 for `mstl`).
 
-## Run it
+## Run it with Docker
 
-Python 3.12 with `uv`:
+Requirements: Docker Desktop (with WSL integration on Windows), Git, Python 3.12
+with `uv` (only for DVC and tests).
 
 ```bash
-uv venv --python 3.12
-source .venv/bin/activate
-uv pip install -r requirements.lock.txt
+git clone git@github.com:appliedmath/eco2mix-anomaly.git
+cd eco2mix-anomaly
+uv venv --python 3.12 && source .venv/bin/activate
+uv pip install -r requirements-dev.txt     # includes dvc
+dvc pull                                    # data/raw, processed, incoming
 
-./run_pipeline.sh                      # collect -> process -> train
-python -m pytest -v                    # tests
-uvicorn src.api.main:app --reload      # API on http://127.0.0.1:8000/docs
+docker compose up -d --build                # mlflow, then trainer, then api
+docker compose ps -a                        # trainer "Exited (0)", others "Up"
 ```
 
-`run_pipeline.sh` uses `src/data/collect.py` and `process.py` when they
-exist. Otherwise it uses `scripts/make_sample_parquet.py`, a stand-in that
-downloads the history and builds the contract file.
+- MLflow: http://localhost:5000 (Model training → Runs)
+- API docs: http://localhost:8000/docs
+
+Without `dvc pull`, the trainer downloads the data from RTE itself.
+
+### Batch prediction (new data arrives)
+
+```bash
+docker compose run --rm batch               # next 7 days arrive and are scored
+docker compose run --rm batch sh batch.sh 1 # next day only
+```
+
+Before: `/anomaly-day?day=2026-01-12` → "no data". After the batch: a result,
+without restarting the API.
+
+### Retrain and reset
+
+```bash
+docker compose run --rm trainer             # retrain, new MLflow run
+dvc checkout --force                        # back to the clean 80/20 split
+docker compose run --rm trainer             # retrain on it
+docker compose down                         # stop everything (data and runs are kept)
+```
 
 ## API
 
-The API only reads files written by the training step
-(`models/detections.parquet`, `models/metadata.json`) and the processed
-parquet. It never runs a model itself.
+The API only reads files written by the trainer and batch jobs
+(`models/detections.parquet`, `models/anomaly_days.csv`, `models/metadata.json`)
+and the processed data. It never runs a model itself.
 
 | Endpoint | Returns |
 |---|---|
 | `GET /health` | status, `model_version`, `last_data` |
 | `GET /model-info` | training metadata and metrics |
-| `GET /anomalies?start=&end=` | flagged points; optional `detector`, `only_anomalies` |
+| `GET /anomaly-day?day=YYYY-MM-DD` | was there an anomaly on this Paris calendar day? Points, max \|z\|, peak time; optional `detector` |
+| `GET /anomalies?start=&end=` | flagged half-hours; optional `detector`, `only_anomalies` |
 | `GET /series?start=&end=` | consumption and RTE forecasts |
 
-Dates are `YYYY-MM-DD`, UTC, both days included, at most 366 days.
-Invalid dates return 422.
+Dates are `YYYY-MM-DD`, both days included, at most 366 days; invalid dates
+return 422, a day without data returns 404.
 
 ```bash
-curl "http://127.0.0.1:8000/anomalies?start=2026-07-14&end=2026-07-14"
+curl "http://localhost:8000/anomaly-day?day=2026-07-14"
 ```
 
-## Known limitations
+## Development without Docker
 
-- Evaluation is in-sample: thresholds are computed on the same data that
-  is scored, and MSTL sees the whole series.
-- Reference events are only holidays and clock changes. Heatwaves, cold
-  snaps, strikes and energy-saving periods are not in the list yet.
-- History only: no real-time collection, so `last_data` is 2026-08-31.
-- The 25 October 2026 clock change is not tested on live data.
-- No authentication on the API.
-- `models/` and `data/` are not in git: run `./run_pipeline.sh` first.
+```bash
+source .venv/bin/activate
+uv pip install -r requirements.lock.txt
+python -m pytest -q                         # 56 tests
+python -m src.models.train                  # train locally (MLflow only if MLFLOW_TRACKING_URI is set)
+uvicorn src.api.main:app --reload           # API on http://127.0.0.1:8000/docs
+```
+
+**macOS note:** the pinned `scipy 1.15.3` can fail on macOS 27 (`import
+statsforecast` raises an ImportError from scipy's `_spropack`). Workaround after
+installing from the lock file: `uv pip install scipy==1.18.1`. Don't change the
+lock file (`statsforecast 2.0.3` requires `scipy < 1.16`); our own code uses
+`statsmodels`. The Docker images are not affected.
 
 ## Layout
 
-- `src/data/`: collect and process (data half)
-- `src/models/`: MSTL detector, baselines, reference events, training
-- `src/api/`: FastAPI service
-- `flows/`, `streamlit_app/`, `notebooks/`: orchestration, dashboard, exploration
-- `scripts/`: stand-in data script, alarm inspection
-- `tests/`: unit tests
-- `config/`: reference events added by hand
-- `run_pipeline.sh`
+| Path | Content |
+|---|---|
+| `src/data/` | `collect.py` (download), `process.py` (30-min grid, flags, validation), `batches.py` (80/20 split, batches) |
+| `src/models/` | `detect.py` (MSTL), `train.py`, `predict.py` (batch scoring), `tracking.py` (MLflow), `events.py` (reference events), `anomaly_days.py`, `model.py` |
+| `src/api/` | FastAPI service |
+| `scripts/` | `split_holdout.py`, `inject_batch.py`, `inspect_alarms.py` |
+| `docker/` | Dockerfiles, per-service requirements, job scripts |
+| `config/` | reference events added by hand |
+| `data/*.dvc` | DVC receipts (the data itself is in DVC storage) |
+| `notebooks/` | data exploration |
+| `tests/` | unit tests |
 
-## Infrastructure notes (Prefect Docker image, MLflow, deployment)
+## Known limitations
 
-## Prefect docker official image
-
-You can see : https://hub.docker.com/r/prefecthq/prefect/tags
-
-Moving from `prefecthq/prefect:3-latest` to `docker pull prefecthq/prefect:3.1.16.dev2-python3.12`. See on https://hub.docker.com/r/prefecthq/prefect/tags.
-
-It is recommended to “pin” a Docker image so that you’re locked into a specific version even if the tag (like “3‑latest”) gets updated later. However, there are a couple of points to consider:
-
-1. Why “Pinning” Is Important
-
-Using a mutable tag like 3-latest means that the underlying image can change over time. This could lead to unexpected behavior if a new version is published that isn’t backwards compatible. Pinning ensures that your deployment always uses the exact image you expect.
-
-2. How to Pin an Image
-
-A. Use a Version Tag:
-Instead of using 3-latest, you can specify a specific version (for example, 3.0.0rc14-python3.11). This way, you know exactly what you’re running, and it won’t change unexpectedly.
-
-B. Use an Immutable Digest:
-Docker images have an immutable identifier called a digest. When you pull an image by digest (e.g., prefecthq/prefect@sha256:<digest>), you’re referencing a specific snapshot of that image. Even if the tag moves, the digest stays the same.
-
-Steps to Pin Using a Digest:
-1. Pull the Image by Tag: `docker pull prefecthq/prefect:3-latest`
-
-(Make sure the tag exists. Note that in some cases, like in a GitHub issue , the 3-latest tag might not be available or could have been changed.)
-
-2. Find the Digest:
-After pulling, run: `docker inspect --format='{{index .RepoDigests 0}}' prefecthq/prefect:3-latest`
-
-This command returns something like `prefecthq/prefect@sha256:abcdef123456....`
-
-3. Deploy Using the Digest:
-Use this digest reference in your deployment commands. For example: `docker pull prefecthq/prefect@sha256:abcdef123456...`
-
-This guarantees that the same image is used every time, regardless of changes to the tag.
-
-3. Special Consideration for Prefect Images
-
-There’s been some discussion on GitHub regarding the 3-latest tag for Prefect images. One issue even reported that deploying with prefecthq/prefect:3-latest resulted in errors because the tag wasn’t found ([ ￼](https://github.com/PrefectHQ/prefect/issues/14384)). In this case, it might be a good idea to either:
-	•	Use a version-specific tag that is known to exist.
-	•	Or, if you prefer using the “latest” style, first check the digest on Docker Hub and then pin it using the digest.
-
-Example in Simple Steps :
-
-1. Decide on the Image:
-Instead of prefecthq/prefect:3-latest, check Docker Hub for Prefect to see available tags.
-
-2. Pin Using a Specific Tag or Digest:
-For a specific tag: `docker pull prefecthq/prefect:3.0.0rc14-python3.11` (tested but did worked in my case). That's why I decided to go for the digest.
-
-Or, for a digest: `docker pull prefecthq/prefect@sha256:abcdef123456...`
-
-
-3. Use in Your Deployment:
-Replace the image reference in your deployment configuration with the one you’ve pinned.
-
-
-mlflow:
-    build:
-      context: .
-      target: development
-    command: mlflow server --host 0.0.0.0 --port 5001
-
-# Create deployment
-
-```sh
-make deploy
-make run
-```
+- Evaluation is in-sample: thresholds are computed on the data that is scored.
+- Reference events are only holidays and clock changes; heatwaves, cold snaps
+  and strikes are not in the list yet.
+- New data is simulated from the held-back 20%; live collection from RTE is a
+  possible next step (RTE revises recent values, so live alerts would be provisional).
+- DVC storage is a local folder for now (DagsHub planned).
+- No authentication on the API yet (Phase 3).
