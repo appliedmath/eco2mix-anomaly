@@ -27,3 +27,6 @@ mlruns/
 .DS_Store
 .mypy_cache/
 /mlflow/
+
+# Local secrets (copy .env.example to .env)
+.env
