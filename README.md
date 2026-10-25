@@ -187,7 +187,7 @@ lock file (`statsforecast 2.0.3` requires `scipy < 1.16`); our own code uses
 | `src/data/` | `collect.py` (download), `process.py` (30-min grid, flags, validation), `batches.py` (80/20 split, batches) |
 | `src/models/` | `detect.py` (MSTL), `train.py`, `compare.py` (detectors × K in MLflow), `predict.py` (batch scoring), `tracking.py` (MLflow), `events.py` (reference events), `anomaly_days.py`, `model.py` |
 | `src/api/` | FastAPI service |
-| `scripts/` | `split_holdout.py`, `inject_batch.py`, `inspect_alarms.py` |
+| `scripts/` | `split_holdout.py`, `inject_batch.py`, `inspect_alarms.py`, `check_clock_change.py` (clock-change day on fresh RTE data) |
 | `docker/` | Dockerfiles, per-service requirements, job scripts |
 | `config/` | reference events added by hand |
 | `data/*.dvc` | DVC receipts (the data itself is in DVC storage) |
