@@ -13,7 +13,6 @@ __pycache__/
 mlruns/
 
 # Data
-/data/
 
 # VSCode
 .vscode/
@@ -23,6 +22,8 @@ mlruns/
 *.parquet
 
 # Model outputs and caches
-/models/
 .pytest_cache/
 .DS_Store
+mlflow.db
+mlartifacts/
+/models
