@@ -56,8 +56,11 @@ when the gap is far from the usual gap:
 **Why K = 4:** the reference value for this "modified z-score" is 3.5
 (Iglewicz & Hoaglin, 1993, *How to Detect and Handle Outliers*). K = 4 is a
 little stricter to keep false alarms low (about 17,500 half-hours per year).
-A sweep over K = 2–6 confirms it gives the best balance between events caught
-and false alarms (K = 3: more events but more than twice as many false alarms).
+A sweep over K = 2–6 for all three detectors (`src/models/compare.py`, 15 MLflow
+runs in the experiment `detector-comparison`) confirms it gives the best balance
+between events caught and false alarms (K = 3: more events but more than twice
+as many false alarms). Run it with
+`docker compose run --rm trainer python -m src.models.compare`.
 
 ## Data
 
@@ -166,7 +169,7 @@ curl "http://localhost:8000/anomaly-day?day=2026-07-14"
 ```bash
 source .venv/bin/activate
 uv pip install -r requirements.lock.txt
-python -m pytest -q                         # 56 tests
+python -m pytest -q                         # all tests
 python -m src.models.train                  # train locally (MLflow only if MLFLOW_TRACKING_URI is set)
 uvicorn src.api.main:app --reload           # API on http://127.0.0.1:8000/docs
 ```
@@ -182,7 +185,7 @@ lock file (`statsforecast 2.0.3` requires `scipy < 1.16`); our own code uses
 | Path | Content |
 |---|---|
 | `src/data/` | `collect.py` (download), `process.py` (30-min grid, flags, validation), `batches.py` (80/20 split, batches) |
-| `src/models/` | `detect.py` (MSTL), `train.py`, `predict.py` (batch scoring), `tracking.py` (MLflow), `events.py` (reference events), `anomaly_days.py`, `model.py` |
+| `src/models/` | `detect.py` (MSTL), `train.py`, `compare.py` (detectors × K in MLflow), `predict.py` (batch scoring), `tracking.py` (MLflow), `events.py` (reference events), `anomaly_days.py`, `model.py` |
 | `src/api/` | FastAPI service |
 | `scripts/` | `split_holdout.py`, `inject_batch.py`, `inspect_alarms.py` |
 | `docker/` | Dockerfiles, per-service requirements, job scripts |
