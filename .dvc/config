@@ -1,5 +1,7 @@
 [core]
     analytics = false
-    remote = localstore
+    remote = dagshub
 ['remote "localstore"']
     url = /home/mina/dvc-storage
+['remote "dagshub"']
+    url = https://dagshub.com/appliedmath/eco2mix-anomaly.dvc
