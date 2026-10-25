@@ -74,7 +74,8 @@ as many false alarms). Run it with
 - **80/20 split** to simulate new data: `data/processed/` holds 1 Jan 2023 →
   8 Jan 2026 (training, 52,990 half-hours); `data/incoming/` holds 9 Jan →
   13 Oct 2026 (13,342 half-hours) that "arrive" week by week.
-- All three folders (`raw`, `processed`, `incoming`) are versioned with **DVC**.
+- All three folders (`raw`, `processed`, `incoming`) are versioned with **DVC**;
+  the data is stored on **DagsHub** (https://dagshub.com/appliedmath/eco2mix-anomaly).
 
 ## Results
 
@@ -113,7 +114,7 @@ git clone git@github.com:appliedmath/eco2mix-anomaly.git
 cd eco2mix-anomaly
 uv venv --python 3.12 && source .venv/bin/activate
 uv pip install -r requirements-dev.txt     # includes dvc
-dvc pull                                    # data/raw, processed, incoming
+dvc pull                                    # data/raw, processed, incoming (from DagsHub)
 
 docker compose up -d --build                # mlflow, then trainer, then api
 docker compose ps -a                        # trainer "Exited (0)", others "Up"
@@ -123,6 +124,24 @@ docker compose ps -a                        # trainer "Exited (0)", others "Up"
 - API docs: http://localhost:8000/docs
 
 Without `dvc pull`, the trainer downloads the data from RTE itself.
+
+### DVC storage on DagsHub (one-time setup)
+
+The data is stored on DagsHub; the remote `dagshub` is already the default in
+`.dvc/config`. Each team member adds their own token once (DagsHub → avatar →
+Your Settings → Tokens). The token goes into `.dvc/config.local`, which git
+ignores, never into a tracked file:
+
+```bash
+read -s DAGSHUB_TOKEN                      # paste the token, press Enter (nothing is shown)
+dvc remote modify dagshub --local auth basic
+dvc remote modify dagshub --local user <your-dagshub-username>
+dvc remote modify dagshub --local password "$DAGSHUB_TOKEN"
+dvc pull                                    # download the data
+dvc push                                    # upload after `dvc add` / `dvc commit`
+```
+
+A local backup remote `localstore` is also configured (`dvc push -r localstore`).
 
 ### Batch prediction (new data arrives)
 
@@ -201,5 +220,6 @@ lock file (`statsforecast 2.0.3` requires `scipy < 1.16`); our own code uses
   and strikes are not in the list yet.
 - New data is simulated from the held-back 20%; live collection from RTE is a
   possible next step (RTE revises recent values, so live alerts would be provisional).
-- DVC storage is a local folder for now (DagsHub planned).
+- DVC storage is DagsHub (hosted). A production setup would use S3-compatible
+  object storage (e.g. MinIO locally, or AWS S3) for both DVC and MLflow artifacts.
 - No authentication on the API yet (Phase 3).
