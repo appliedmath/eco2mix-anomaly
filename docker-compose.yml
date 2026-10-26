@@ -4,6 +4,8 @@
 #   api     - FastAPI, reads what the trainer wrote
 # Start everything:  docker compose up --build
 # Retrain later:     docker compose run --rm trainer
+#   (promote or reject: the new model replaces the old one only if not worse)
+#   Worse model demo: docker compose run --rm trainer python -m src.models.train --k 2
 # New data + score:  docker compose run --rm batch      (next 7 days)
 #                    docker compose run --rm batch sh batch.sh 1   (next day)
 
