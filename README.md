@@ -10,7 +10,7 @@ that serves the results.
 | Phase | Content | Status |
 |---|---|---|
 | **1** | Scoping, objectives and metrics; RTE data collected and cleaned (UTC 30-minute grid, clock-change fix, validation); MSTL detector and two baselines evaluated on reference events; read-only FastAPI service; unit tests | ✅ done |
-| **2** | Docker services (MLflow, trainer, batch, API), MLflow tracking, DVC data versioning, 80/20 split with batch prediction on new data | ✅ done · promote-or-reject retraining in progress |
+| **2** | Docker services (MLflow, trainer, batch, API), MLflow tracking, DVC data versioning (DagsHub), 80/20 split with batch prediction on new data, promote-or-reject retraining with the MLflow Model Registry | ✅ done |
 | **3** | Airflow DAGs for batch prediction and retraining, API endpoints to trigger them, API security, CI with GitHub Actions | ⏳ next |
 | **4** | Prometheus + Grafana monitoring, drift detection, Streamlit dashboard | ⏳ planned |
 
@@ -33,7 +33,7 @@ flowchart LR
 | Service | What it does | Runs |
 |---|---|---|
 | `mlflow` | Tracking server: every training run with its parameters, metrics and model files | always |
-| `trainer` | Job: downloads and cleans the data if missing, trains, logs to MLflow, writes `models/` | once, then exits |
+| `trainer` | Job: downloads and cleans the data if missing, trains, logs to MLflow; the new model replaces the one in `models/` only if it is not worse | once, then exits |
 | `batch` | Job: new data arrives (next 7 days by default), the **saved** model scores only those half-hours | on demand |
 | `api` | FastAPI: serves stored results; re-reads files when they change (no restart needed) | always |
 
@@ -120,7 +120,7 @@ docker compose up -d --build                # mlflow, then trainer, then api
 docker compose ps -a                        # trainer "Exited (0)", others "Up"
 ```
 
-- MLflow: http://localhost:5000 (Model training → Runs)
+- MLflow: http://localhost:5000 (Model training → Runs; Models → `grid-anomaly-detector`)
 - API docs: http://localhost:8000/docs
 
 Without `dvc pull`, the trainer downloads the data from RTE itself.
@@ -152,6 +152,31 @@ docker compose run --rm batch sh batch.sh 1 # next day only
 
 Before: `/anomaly-day?day=2026-01-12` → "no data". After the batch: a result,
 without restarting the API.
+
+### Retrain: promote or reject
+
+Every training run is a *candidate*. It is written to `models/candidate/`
+and scored on the same data as the model in use (the *champion*), with the
+main detector `mstl`:
+
+- **promoted** if its recall is not lower **and** its false alarms per week
+  are at most 10 % higher → its files replace the champion's in `models/`,
+  it is registered as a new version of `grid-anomaly-detector` in the MLflow
+  Model Registry and gets the alias **`champion`**;
+- **rejected** otherwise → `models/` is unchanged; the run is still logged
+  in MLflow with the tag `decision = rejected` and the reason.
+
+Every run logs both scores (`mstl_recall` vs `champion_recall`, …) so the
+decision can be checked in the MLflow UI.
+
+```bash
+docker compose run --rm trainer                                  # K = 4: promoted
+docker compose run --rm trainer python -m src.models.train --k 2  # rejected: far more false alarms
+docker compose run --rm trainer python -m src.models.train --k 6  # rejected: lower recall
+```
+
+The champion can be loaded from the registry:
+`mlflow.pyfunc.load_model("models:/grid-anomaly-detector@champion")`.
 
 ### Retrain and reset
 
@@ -204,7 +229,7 @@ lock file (`statsforecast 2.0.3` requires `scipy < 1.16`); our own code uses
 | Path | Content |
 |---|---|
 | `src/data/` | `collect.py` (download), `process.py` (30-min grid, flags, validation), `batches.py` (80/20 split, batches) |
-| `src/models/` | `detect.py` (MSTL), `train.py`, `compare.py` (detectors × K in MLflow), `predict.py` (batch scoring), `tracking.py` (MLflow), `events.py` (reference events), `anomaly_days.py`, `model.py` |
+| `src/models/` | `detect.py` (MSTL), `train.py`, `promote.py` (promote or reject), `compare.py` (detectors × K in MLflow), `predict.py` (batch scoring), `tracking.py` (MLflow runs + registry), `pyfunc_model.py` (model for the registry), `events.py` (reference events), `anomaly_days.py`, `model.py` |
 | `src/api/` | FastAPI service |
 | `scripts/` | `split_holdout.py`, `inject_batch.py`, `inspect_alarms.py`, `check_clock_change.py` (clock-change day on fresh RTE data) |
 | `docker/` | Dockerfiles, per-service requirements, job scripts |
