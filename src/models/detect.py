@@ -12,7 +12,7 @@ def mstl_residual(series: pd.Series, periods=(DAY, WEEK)) -> pd.Series:
     return MSTL(series, periods=periods).fit().resid
 
 
-def detect_mstl(series: pd.Series, k: float = 4.0, ref: dict = None,
+def detect_mstl(series: pd.Series, k: float = 4.0, ref: dict | None = None,
                 periods=(DAY, WEEK)) -> pd.DataFrame:
     """Flag points whose residual is far from the usual residual."""
     resid = mstl_residual(series, periods)
