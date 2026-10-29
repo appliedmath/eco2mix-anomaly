@@ -1,0 +1,47 @@
+schema: '2.0'
+stages:
+  train:
+    cmd: python -m src.models.train
+    deps:
+    - path: config/reference_events_manual.csv
+      hash: md5
+      md5: d2e4058d031d2559fd08270b65f19c92
+      size: 29
+    - path: data/processed/consumption_30min.parquet
+      hash: md5
+      md5: 658fef6b7316b685fbda41a1b8504812
+      size: 831856
+    - path: src/models/anomaly_days.py
+      hash: md5
+      md5: 9b50b5567ec7869397108f2b960c4990
+      size: 2611
+    - path: src/models/detect.py
+      hash: md5
+      md5: 11a6b8dc712fe8d849f08559bca0d089
+      size: 919
+    - path: src/models/events.py
+      hash: md5
+      md5: ed8331792efed849d476ecd6b81dc560
+      size: 2607
+    - path: src/models/model.py
+      hash: md5
+      md5: e1e0b7edbf53fee1b3f518e5a138b89d
+      size: 1243
+    - path: src/models/promote.py
+      hash: md5
+      md5: 0f48d3130d5b4e0e5279dd66e5c5abae
+      size: 2529
+    - path: src/models/tracking.py
+      hash: md5
+      md5: 4e33e49400f19997ee390cbb18f2d536
+      size: 3428
+    - path: src/models/train.py
+      hash: md5
+      md5: d179429bd808acb02262fb17e100a1a1
+      size: 6084
+    outs:
+    - path: models
+      hash: md5
+      md5: 3641b90dcc398fb53e879bdf82a1201c.dir
+      size: 2513184
+      nfiles: 4

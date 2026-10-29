@@ -1,0 +1,15 @@
+stages:
+  train:
+    cmd: python -m src.models.train
+    deps:
+      - src/models/train.py
+      - src/models/model.py
+      - src/models/detect.py
+      - src/models/events.py
+      - src/models/anomaly_days.py
+      - src/models/promote.py
+      - src/models/tracking.py
+      - config/reference_events_manual.csv
+      - data/processed/consumption_30min.parquet
+    outs:
+      - models
