@@ -2,3 +2,4 @@ ipykernel
 pandas-stubs
 types-requests
 dvc==3.67.1
+ruff
