@@ -218,9 +218,11 @@ Airflow UI: http://localhost:8080 (user and password from `.env`). DAGs start
 
 ## API
 
-The API only reads files written by the trainer and batch jobs
+The API reads files written by the trainer and batch jobs
 (`models/detections.parquet`, `models/anomaly_days.csv`, `models/metadata.json`)
-and the processed data. It never runs a model itself.
+and the processed data. It never runs a model itself: to start a job it asks
+**Airflow** to start a DAG run, so the workflow is defined only once, in Airflow.
+After a run, the API picks up the new files automatically (no restart).
 
 | Endpoint | Returns |
 |---|---|
@@ -229,6 +231,9 @@ and the processed data. It never runs a model itself.
 | `GET /anomaly-day?day=YYYY-MM-DD` | was there an anomaly on this Paris calendar day? Points, max \|z\|, peak time; optional `detector` |
 | `GET /anomalies?start=&end=` | flagged half-hours; optional `detector`, `only_anomalies` |
 | `GET /series?start=&end=` | consumption and RTE forecasts |
+| `POST /train` | starts `retrain_dag` in Airflow (promote-or-reject decides) → `202` with `run_id` |
+| `POST /predict?days=1` | starts `batch_dag`: inject the next `days` (1–31) and score them → `202` with `run_id` |
+| `GET /runs/{dag_id}/{run_id}` | state of that run and of its tasks (`queued`, `running`, `success`, `failed`) |
 
 Dates are `YYYY-MM-DD`, both days included, at most 366 days; invalid dates
 return 422, a day without data returns 404.
@@ -236,6 +241,19 @@ return 422, a day without data returns 404.
 ```bash
 curl "http://localhost:8000/anomaly-day?day=2026-07-14"
 ```
+
+Start a job and follow it (Airflow must be running and the DAG switched on;
+a paused DAG returns `409`, Airflow not reachable returns `503`):
+
+```bash
+curl -X POST http://localhost:8000/train
+# {"dag_id":"retrain_dag","run_id":"api__20261030T150000_ab12","state":"queued","status_url":"/runs/retrain_dag/api__20261030T150000_ab12"}
+curl http://localhost:8000/runs/retrain_dag/api__20261030T150000_ab12
+```
+
+The API logs in to Airflow with the Airflow user from `.env`
+(`AIRFLOW_ADMIN_USER` / `AIRFLOW_ADMIN_PASSWORD`). Access control for
+`/train` and `/predict` comes with the API key (next step).
 
 ## Development without Docker
 

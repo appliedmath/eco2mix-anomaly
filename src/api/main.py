@@ -1,10 +1,17 @@
 import os
-from datetime import date
+import uuid
+from datetime import UTC, date, datetime
 from typing import Literal
 
 import pandas as pd
-from fastapi import Depends, FastAPI, HTTPException
+from fastapi import Depends, FastAPI, HTTPException, Query
 
+from src.api.airflow_client import (
+    AirflowClient,
+    AirflowError,
+    AirflowUnavailable,
+    client_from_env,
+)
 from src.models.anomaly_days import paris_day_bounds, summarize_days
 from src.models.model import load_model
 
@@ -16,6 +23,7 @@ MAX_DAYS = 366
 app = FastAPI(title="Grid anomaly detection")
 
 DetectorName = Literal["mstl", "forecast_gap", "last_week"]
+DagName = Literal["batch_dag", "retrain_dag"]
 
 
 _cache: dict = {}
@@ -176,3 +184,79 @@ def anomaly_day(
                       max_abs_z=float(top["max_abs_z"]),
                       peak_utc=top["peak_utc"])
     return result
+
+
+# ---------- Jobs through Airflow (Phase 3) ----------
+# The API never trains or predicts itself: it asks Airflow to start a DAG run.
+# The workflow (steps, retries, one-job-at-a-time pool) lives only in Airflow.
+
+def get_airflow() -> AirflowClient:
+    return client_from_env()
+
+
+def new_run_id() -> str:
+    """Readable, unique run id, so API-started runs are easy to spot in Airflow."""
+    return f"api__{datetime.now(UTC):%Y%m%dT%H%M%S}_{uuid.uuid4().hex[:4]}"
+
+
+def airflow_problem(err: AirflowError) -> str:
+    if err.status in (401, 403):
+        return ("Airflow refused the API's login: check AIRFLOW_ADMIN_USER and "
+                "AIRFLOW_ADMIN_PASSWORD in .env")
+    return err.message
+
+
+def start_dag(airflow: AirflowClient, dag_id: str, conf: dict) -> dict:
+    try:
+        if airflow.is_paused(dag_id):
+            raise HTTPException(
+                status_code=409,
+                detail=f"{dag_id} is paused in Airflow: switch it on first")
+        run = airflow.trigger(dag_id, new_run_id(), conf)
+    except AirflowUnavailable as err:
+        raise HTTPException(status_code=503,
+                            detail=f"Airflow is not reachable: {err}") from err
+    except AirflowError as err:
+        raise HTTPException(status_code=502, detail=airflow_problem(err)) from err
+    return {
+        "dag_id": dag_id,
+        "run_id": run["dag_run_id"],
+        "state": run["state"],
+        "status_url": f"/runs/{dag_id}/{run['dag_run_id']}",
+    }
+
+
+@app.post("/train", status_code=202)
+def train(airflow: AirflowClient = Depends(get_airflow)):
+    """Retrain now (retrain_dag): promote-or-reject decides if the new model is used."""
+    return start_dag(airflow, "retrain_dag", {})
+
+
+@app.post("/predict", status_code=202)
+def predict(days: int = Query(1, ge=1, le=31),
+            airflow: AirflowClient = Depends(get_airflow)):
+    """Inject the next `days` of data and score them (batch_dag)."""
+    return start_dag(airflow, "batch_dag", {"days": days})
+
+
+@app.get("/runs/{dag_id}/{run_id}")
+def run_status(dag_id: DagName, run_id: str,
+               airflow: AirflowClient = Depends(get_airflow)):
+    """State of one run and of its tasks (queued, running, success, failed)."""
+    try:
+        run = airflow.get_run(dag_id, run_id)
+        tasks = airflow.task_states(dag_id, run_id)
+    except AirflowUnavailable as err:
+        raise HTTPException(status_code=503,
+                            detail=f"Airflow is not reachable: {err}") from err
+    except AirflowError as err:
+        code = 404 if err.status == 404 else 502
+        raise HTTPException(status_code=code, detail=airflow_problem(err)) from err
+    return {
+        "dag_id": dag_id,
+        "run_id": run_id,
+        "state": run["state"],
+        "start_date": run.get("start_date"),
+        "end_date": run.get("end_date"),
+        "tasks": tasks,
+    }

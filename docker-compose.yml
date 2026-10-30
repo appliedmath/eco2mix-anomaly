@@ -99,6 +99,10 @@ services:
     environment:
       - MODEL_DIR=/app/models
       - DATA_PATH=/app/data/processed/consumption_30min.parquet
+      # POST /train and /predict start Airflow DAG runs through its REST API
+      - AIRFLOW_URL=http://airflow-webserver:8080
+      - AIRFLOW_USER=${AIRFLOW_ADMIN_USER:-admin}
+      - AIRFLOW_PASSWORD=${AIRFLOW_ADMIN_PASSWORD:-}
     ports:
       - "8000:8000"
     volumes:
