@@ -1,13 +1,47 @@
-# Phase 2: three services
-#   mlflow  - tracking server (runs, metrics, model files)
+# Services
+#   mlflow  - tracking server (runs, metrics, model registry)
 #   trainer - one-off job: collect -> process -> train, logs to MLflow
 #   api     - FastAPI, reads what the trainer wrote
-# Start everything:  docker compose up --build
-# Retrain later:     docker compose run --rm trainer
+#   airflow-* - orchestrator (Phase 3): batch_dag daily, retrain_dag weekly;
+#               each task starts the trainer image through the Docker socket
+# First time:        cp .env.example .env   (fill in the Airflow values)
+#                    mkdir -p airflow/logs
+# Start everything:  docker compose up -d --build
+# Airflow UI:        http://localhost:8080
+# Retrain by hand:   docker compose run --rm trainer
 #   (promote or reject: the new model replaces the old one only if not worse)
 #   Worse model demo: docker compose run --rm trainer python -m src.models.train --k 2
-# New data + score:  docker compose run --rm batch      (next 7 days)
-#                    docker compose run --rm batch sh batch.sh 1   (next day)
+# New data by hand:  docker compose run --rm batch      (next 7 days)
+
+name: eco2mix-anomaly   # fixed project name -> network eco2mix-anomaly_default,
+                        # image eco2mix-anomaly-trainer (used by the DAGs)
+
+x-airflow-common: &airflow-common
+  build:
+    context: .
+    dockerfile: docker/airflow.Dockerfile
+  image: eco2mix-anomaly-airflow
+  environment: &airflow-env
+    AIRFLOW__CORE__EXECUTOR: LocalExecutor
+    AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:${AIRFLOW_DB_PASSWORD:?set AIRFLOW_DB_PASSWORD in .env}@airflow-db/airflow
+    AIRFLOW__CORE__FERNET_KEY: ${AIRFLOW_FERNET_KEY:-}
+    AIRFLOW__WEBSERVER__SECRET_KEY: ${AIRFLOW_SECRET_KEY:?set AIRFLOW_SECRET_KEY in .env}
+    AIRFLOW__CORE__LOAD_EXAMPLES: "false"
+    AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION: "true"
+    AIRFLOW__API__AUTH_BACKENDS: airflow.api.auth.backend.basic_auth,airflow.api.auth.backend.session
+    HOST_PROJECT_DIR: ${HOST_PROJECT_DIR:?set HOST_PROJECT_DIR in .env}
+    TRAINER_IMAGE: eco2mix-anomaly-trainer:latest
+    COMPOSE_NETWORK: eco2mix-anomaly_default
+  user: "${AIRFLOW_UID:-50000}:0"
+  group_add:
+    - "${DOCKER_GID:-0}"      # may use the Docker socket without chmod 777
+  volumes:
+    - ./dags:/opt/airflow/dags
+    - ./airflow/logs:/opt/airflow/logs
+    - /var/run/docker.sock:/var/run/docker.sock
+  depends_on:
+    airflow-db:
+      condition: service_healthy
 
 services:
   mlflow:
@@ -73,3 +107,60 @@ services:
     depends_on:
       trainer:
         condition: service_completed_successfully
+
+  # ---------- Airflow (Phase 3) ----------
+  airflow-db:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: airflow
+      POSTGRES_PASSWORD: ${AIRFLOW_DB_PASSWORD:?set AIRFLOW_DB_PASSWORD in .env}
+      POSTGRES_DB: airflow
+    volumes:
+      - airflow-db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "airflow"]
+      interval: 5s
+      retries: 10
+
+  airflow-init:
+    # One-off: create/upgrade Airflow's database, the admin user and the pool
+    <<: *airflow-common
+    command: ["airflow", "pools", "set", "models", "1", "One job at a time writes models/"]
+    environment:
+      <<: *airflow-env
+      _AIRFLOW_DB_MIGRATE: "true"
+      _AIRFLOW_WWW_USER_CREATE: "true"
+      _AIRFLOW_WWW_USER_USERNAME: ${AIRFLOW_ADMIN_USER:-admin}
+      _AIRFLOW_WWW_USER_PASSWORD: ${AIRFLOW_ADMIN_PASSWORD:?set AIRFLOW_ADMIN_PASSWORD in .env}
+
+  airflow-webserver:
+    <<: *airflow-common
+    command: webserver
+    ports:
+      - "8080:8080"
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "http://localhost:8080/health"]
+      interval: 15s
+      timeout: 10s
+      retries: 10
+    depends_on:
+      airflow-init:
+        condition: service_completed_successfully
+
+  airflow-scheduler:
+    <<: *airflow-common
+    command: scheduler
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "http://localhost:8974/health"]
+      interval: 15s
+      timeout: 10s
+      retries: 10
+    environment:
+      <<: *airflow-env
+      AIRFLOW__SCHEDULER__ENABLE_HEALTH_CHECK: "true"
+    depends_on:
+      airflow-init:
+        condition: service_completed_successfully
+
+volumes:
+  airflow-db-data:
