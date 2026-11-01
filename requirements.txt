@@ -1,5 +1,4 @@
-# --- from the template: orchestration + tracking ---
-prefect>=3.1
+# --- tracking ---
 mlflow>=2.10
 python-dotenv>=1.0
 scikit-learn>=1.3

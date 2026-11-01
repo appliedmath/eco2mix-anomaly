@@ -36,6 +36,21 @@ def champion_metrics(meta: dict) -> dict:
             if isinstance(value, (int, float))}
 
 
+def model_signature():
+    """Input example and signature: what the model takes and returns.
+
+    Shown as "Schema" in the MLflow UI; MLflow checks inputs against it when
+    the model is loaded and called (wrong column names or types are refused).
+    """
+    import pandas as pd
+    from mlflow.models import infer_signature
+
+    example = pd.DataFrame({"actual": [52000.0, 61000.0],
+                            "expected": [51500.0, 52000.0]})
+    output = pd.DataFrame({"z_score": [0.4, 8.1], "is_anomaly": [False, True]})
+    return example, infer_signature(example, output, params={"detector": "mstl"})
+
+
 def register_champion(model_dir: str) -> str:
     """Log the model as a pyfunc, register it and move the alias to it."""
     import mlflow
@@ -43,12 +58,15 @@ def register_champion(model_dir: str) -> str:
 
     from src.models.pyfunc_model import AnomalyModel
 
+    example, signature = model_signature()
     info = mlflow.pyfunc.log_model(
         name="model",
         python_model=AnomalyModel(),
         artifacts={"model": os.path.join(model_dir, "model.joblib")},
         code_paths=["src"],
         pip_requirements=["pandas", "joblib"],
+        signature=signature,
+        input_example=example,
         registered_model_name=MODEL_NAME,
     )
     version = str(info.registered_model_version)

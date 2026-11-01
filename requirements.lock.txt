@@ -121,7 +121,6 @@ pexpect==4.9.0
 pillow==12.3.0
 platformdirs==4.12.4
 pluggy==1.6.0
-prefect==3.8.8
 prettytable==3.18.0
 prometheus-client==0.26.0
 prompt-toolkit==3.0.53
