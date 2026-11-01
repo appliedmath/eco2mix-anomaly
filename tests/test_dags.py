@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-pytest.importorskip("airflow")
+pytest.importorskip("airflow.models")
 
 DAGS = Path(__file__).resolve().parents[1] / "dags"
 
