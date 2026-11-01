@@ -4,6 +4,8 @@
 #   api     - FastAPI, reads what the trainer wrote
 #   airflow-* - orchestrator (Phase 3): batch_dag daily, retrain_dag weekly;
 #               each task starts the trainer image through the Docker socket
+#   nginx   - single entry point: the only service with open ports
+#             (API :8000, MLflow :5000, Airflow :8080)
 # First time:        cp .env.example .env   (fill in the Airflow values)
 #                    mkdir -p airflow/logs
 # Start everything:  docker compose up -d --build
@@ -56,10 +58,7 @@ services:
       --uvicorn-opts "--no-access-log"
     environment:
       - MLFLOW_DISABLE_TELEMETRY=true
-    ports:
-      # host port from .env (MLFLOW_PORT, default 5000; on macOS 5000 is often
-      # taken by AirPlay → use 5001). Inside compose it is always mlflow:5000.
-      - "${MLFLOW_PORT:-5000}:5000"
+    # no ports: reachable from your machine only through nginx (:5000)
     volumes:
       - ./mlflow:/mlflow
     healthcheck:
@@ -105,14 +104,31 @@ services:
       - AIRFLOW_URL=http://airflow-webserver:8080
       - AIRFLOW_USER=${AIRFLOW_ADMIN_USER:-admin}
       - AIRFLOW_PASSWORD=${AIRFLOW_ADMIN_PASSWORD:-}
-    ports:
-      - "8000:8000"
+    # no ports: reachable from your machine only through nginx (:8000)
     volumes:
       - ./data:/app/data:ro
       - ./models:/app/models:ro
     depends_on:
       trainer:
         condition: service_completed_successfully
+
+  # ---------- NGINX: single entry point (Phase 3) ----------
+  # The only service with ports on your machine. Same URLs as before:
+  # API :8000, MLflow :5000, Airflow :8080 (each port can be changed in .env).
+  nginx:
+    image: nginx:1.28-alpine
+    ports:
+      - "${API_PORT:-8000}:8000"
+      - "${MLFLOW_PORT:-5000}:5000"
+      - "${AIRFLOW_PORT:-8080}:8080"
+    volumes:
+      - ./docker/nginx/default.conf:/etc/nginx/conf.d/default.conf:ro
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8000/nginx-health"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+    restart: unless-stopped
 
   # ---------- Airflow (Phase 3) ----------
   airflow-db:
@@ -142,8 +158,7 @@ services:
   airflow-webserver:
     <<: *airflow-common
     command: webserver
-    ports:
-      - "8080:8080"
+    # no ports: reachable from your machine only through nginx (:8080)
     healthcheck:
       test: ["CMD", "curl", "--fail", "http://localhost:8080/health"]
       interval: 15s

@@ -25,9 +25,14 @@ flowchart LR
     DATA --> BATCH[batch<br/>container]
     MODELS --> BATCH
     BATCH -->|new detections| MODELS
-    MODELS --> API[api<br/>FastAPI :8000]
+    MODELS --> API[api<br/>FastAPI]
     DATA --> API
-    USER((user)) --> API
+    USER((user)) --> NGINX[nginx<br/>:8000 :5000 :8080]
+    NGINX --> API
+    NGINX --> MLFLOW
+    NGINX --> AIRFLOW[airflow<br/>webserver + scheduler]
+    API -->|start DAG runs| AIRFLOW
+    AIRFLOW -->|DockerOperator| TRAINER
 ```
 
 | Service | What it does | Runs |
@@ -37,6 +42,7 @@ flowchart LR
 | `batch` | Job: new data arrives (next 7 days by default), the **saved** model scores only those half-hours | on demand |
 | `api` | FastAPI: serves stored results; re-reads files when they change (no restart needed) | always |
 | `airflow-*` | Orchestrator: `batch_dag` (daily) and `retrain_dag` (weekly); each task starts the trainer image (DockerOperator) | always (DAGs paused until switched on) |
+| `nginx` | Single entry point: the **only** service with ports on your machine; forwards to API, MLflow and Airflow | always |
 
 Containers share the `data/` and `models/` folders. Each service has its own
 small image on `python:3.12-slim` with only the packages it needs.
@@ -260,6 +266,38 @@ The API logs in to Airflow with the Airflow user from `.env`
 (`AIRFLOW_ADMIN_USER` / `AIRFLOW_ADMIN_PASSWORD`). Access control for
 `/train` and `/predict` comes with the API key (next step).
 
+## Single entry point: NGINX
+
+Only the `nginx` container opens ports on your machine; `api`, `mlflow` and
+`airflow-webserver` are reachable only inside the compose network. The URLs
+stay the same:
+
+| URL | Goes to |
+|---|---|
+| http://localhost:8000 (`/docs`) | API |
+| http://localhost:5000 | MLflow UI |
+| http://localhost:8080 | Airflow UI and REST API |
+
+What NGINX adds in front of the API:
+- `POST /train` and `POST /predict` are **rate-limited**: 6 per minute per
+  client (+3 burst), more → `429 Too Many Requests`.
+- Request bodies over 1 MB → `413`.
+- Security headers (`X-Content-Type-Options`, `X-Frame-Options`,
+  `Referrer-Policy`); the NGINX version is hidden.
+- `X-Forwarded-For` / `X-Real-IP` so the API sees the real client address.
+
+Services talk to each other directly inside the network (API → Airflow,
+trainer → MLflow), not through NGINX. A port already in use? Change
+`API_PORT`, `MLFLOW_PORT` or `AIRFLOW_PORT` in `.env`.
+
+```bash
+docker compose ps                       # only nginx shows ports
+curl -I http://localhost:8000/health    # "Server: nginx" + security headers
+```
+
+Config: `docker/nginx/default.conf`. After changing it:
+`docker compose restart nginx`.
+
 ## Development without Docker
 
 ```bash
@@ -267,7 +305,7 @@ source .venv/bin/activate
 uv pip install -r requirements.lock.txt
 python -m pytest -q                         # all tests
 python -m src.models.train                  # train locally (MLflow only if MLFLOW_TRACKING_URI is set)
-uvicorn src.api.main:app --reload           # API on http://127.0.0.1:8000/docs
+uvicorn src.api.main:app --reload --port 8001   # API on http://127.0.0.1:8001/docs (8000 = nginx)
 ```
 
 **macOS note:** the pinned `scipy 1.15.3` can fail on macOS 27 (`import
@@ -285,7 +323,7 @@ lock file (`statsforecast 2.0.3` requires `scipy < 1.16`); our own code uses
 | `src/api/` | FastAPI service |
 | `scripts/` | `split_holdout.py`, `inject_batch.py`, `inspect_alarms.py`, `check_clock_change.py` (clock-change day on fresh RTE data) |
 | `dags/` | Airflow DAGs (`batch_dag`, `retrain_dag`) and their shared settings |
-| `docker/` | Dockerfiles (trainer, api, airflow), per-service requirements, job scripts |
+| `docker/` | Dockerfiles (trainer, api, airflow), per-service requirements, job scripts, `nginx/default.conf` |
 | `config/` | reference events added by hand |
 | `data/*.dvc` | DVC receipts (the data itself is in DVC storage) |
 | `notebooks/` | data exploration |
