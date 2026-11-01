@@ -11,8 +11,12 @@ that serves the results.
 |---|---|---|
 | **1** | Scoping, objectives and metrics; RTE data collected and cleaned (UTC 30-minute grid, clock-change fix, validation); MSTL detector and two baselines evaluated on reference events; read-only FastAPI service; unit tests | ✅ done |
 | **2** | Docker services (MLflow, trainer, batch, API), MLflow tracking, DVC data versioning (DagsHub), 80/20 split with batch prediction on new data, promote-or-reject retraining with the MLflow Model Registry | ✅ done |
-| **3** | Airflow DAGs for batch prediction and retraining, API endpoints to trigger them, API security, CI with GitHub Actions | 🔄 in progress: Airflow + DAGs |
+| **3** | Airflow DAGs for batch prediction and retraining (DockerOperator); API endpoints that start them through Airflow (`POST /train`, `POST /predict`); MLflow model signature; NGINX as single entry point; API key; CI with GitHub Actions | ✅ done (tag `v0.3`) |
 | **4** | Prometheus + Grafana monitoring, drift detection, Streamlit dashboard | ⏳ planned |
+
+**Documentation:** [Architecture](docs/architecture.md) (services, who calls
+whom, flows, design decisions) · [CI/CD strategy](docs/cicd_strategy.md)
+(what happens when code, data or the model change).
 
 ## Architecture
 
@@ -254,17 +258,27 @@ curl "http://localhost:8000/anomaly-day?day=2026-07-14"
 ```
 
 Start a job and follow it (Airflow must be running and the DAG switched on;
-a paused DAG returns `409`, Airflow not reachable returns `503`):
+a paused DAG returns `409`, Airflow not reachable returns `503`).
+`POST /train` and `POST /predict` need the **API key** from `.env` in the
+header `X-API-Key` (missing → `401`, wrong → `403`); the read endpoints stay
+open. In `/docs`, click **Authorize** and paste the key.
 
 ```bash
-curl -X POST http://localhost:8000/train
+export API_KEY=$(grep ^API_KEY= .env | cut -d= -f2-)
+curl -X POST -H "X-API-Key: $API_KEY" http://localhost:8000/train
 # {"dag_id":"retrain_dag","run_id":"api__20261030T150000_ab12","state":"queued","status_url":"/runs/retrain_dag/api__20261030T150000_ab12"}
 curl http://localhost:8000/runs/retrain_dag/api__20261030T150000_ab12
 ```
 
+Set your own key once: replace `API_KEY=change-me` in `.env` with a random
+value (`python3 -c "import secrets; print(secrets.token_urlsafe(32))"`) and
+restart the API (`docker compose up -d --no-deps api`). If `API_KEY` is empty
+the job endpoints stay locked (`500`).
+
 The API logs in to Airflow with the Airflow user from `.env`
-(`AIRFLOW_ADMIN_USER` / `AIRFLOW_ADMIN_PASSWORD`). Access control for
-`/train` and `/predict` comes with the API key (next step).
+(`AIRFLOW_ADMIN_USER` / `AIRFLOW_ADMIN_PASSWORD`). Fine for this project; in
+production it would be a dedicated service account with only the rights to
+start DAG runs.
 
 ## Single entry point: NGINX
 
@@ -325,6 +339,7 @@ lock file (`statsforecast 2.0.3` requires `scipy < 1.16`); our own code uses
 | `dags/` | Airflow DAGs (`batch_dag`, `retrain_dag`) and their shared settings |
 | `docker/` | Dockerfiles (trainer, api, airflow), per-service requirements, job scripts, `nginx/default.conf` |
 | `config/` | reference events added by hand |
+| `docs/` | `architecture.md`, `cicd_strategy.md` |
 | `data/*.dvc` | DVC receipts (the data itself is in DVC storage) |
 | `notebooks/` | data exploration |
 | `tests/` | unit tests |
