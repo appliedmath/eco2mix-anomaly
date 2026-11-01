@@ -11,7 +11,7 @@ that serves the results.
 |---|---|---|
 | **1** | Scoping, objectives and metrics; RTE data collected and cleaned (UTC 30-minute grid, clock-change fix, validation); MSTL detector and two baselines evaluated on reference events; read-only FastAPI service; unit tests | ✅ done |
 | **2** | Docker services (MLflow, trainer, batch, API), MLflow tracking, DVC data versioning (DagsHub), 80/20 split with batch prediction on new data, promote-or-reject retraining with the MLflow Model Registry | ✅ done |
-| **3** | Airflow DAGs for batch prediction and retraining, API endpoints to trigger them, API security, CI with GitHub Actions | ⏳ next |
+| **3** | Airflow DAGs for batch prediction and retraining, API endpoints to trigger them, API security, CI with GitHub Actions | 🔄 in progress: Airflow + DAGs |
 | **4** | Prometheus + Grafana monitoring, drift detection, Streamlit dashboard | ⏳ planned |
 
 ## Architecture
@@ -36,6 +36,7 @@ flowchart LR
 | `trainer` | Job: downloads and cleans the data if missing, trains, logs to MLflow; the new model replaces the one in `models/` only if it is not worse | once, then exits |
 | `batch` | Job: new data arrives (next 7 days by default), the **saved** model scores only those half-hours | on demand |
 | `api` | FastAPI: serves stored results; re-reads files when they change (no restart needed) | always |
+| `airflow-*` | Orchestrator: `batch_dag` (daily) and `retrain_dag` (weekly); each task starts the trainer image (DockerOperator) | always (DAGs paused until switched on) |
 
 Containers share the `data/` and `models/` folders. Each service has its own
 small image on `python:3.12-slim` with only the packages it needs.
@@ -187,6 +188,34 @@ docker compose run --rm trainer             # retrain on it
 docker compose down                         # stop everything (data and runs are kept)
 ```
 
+## Orchestration with Airflow
+
+Airflow 2.11 (LocalExecutor, own Postgres) runs next to the other services.
+Each DAG task starts a container from the **trainer image** through the Docker
+socket, with `data/` and `models/` mounted, the same pattern as the course's
+DockerOperator chapter.
+
+| DAG | Schedule | Tasks |
+|---|---|---|
+| `batch_dag` | daily | `inject_batch` (next day of data; run conf `{"days": 7}` for a week) → `predict` |
+| `retrain_dag` | weekly | `train` (promote-or-reject, logged in MLflow) |
+
+Both tasks share a pool with one slot, so two jobs never write `models/` at
+the same time.
+
+**First time:**
+
+```bash
+cp .env.example .env        # then fill in the Airflow block:
+#   HOST_PROJECT_DIR=$(pwd)  AIRFLOW_UID=$(id -u)  DOCKER_GID=$(stat -L -c %g /var/run/docker.sock)
+#   admin password, DB password, two random keys (command in .env.example)
+mkdir -p airflow/logs
+docker compose up -d --build
+```
+
+Airflow UI: http://localhost:8080 (user and password from `.env`). DAGs start
+**paused**: switch one on with its toggle, or press ▶ to run it once.
+
 ## API
 
 The API only reads files written by the trainer and batch jobs
@@ -232,7 +261,8 @@ lock file (`statsforecast 2.0.3` requires `scipy < 1.16`); our own code uses
 | `src/models/` | `detect.py` (MSTL), `train.py`, `promote.py` (promote or reject), `compare.py` (detectors × K in MLflow), `predict.py` (batch scoring), `tracking.py` (MLflow runs + registry), `pyfunc_model.py` (model for the registry), `events.py` (reference events), `anomaly_days.py`, `model.py` |
 | `src/api/` | FastAPI service |
 | `scripts/` | `split_holdout.py`, `inject_batch.py`, `inspect_alarms.py`, `check_clock_change.py` (clock-change day on fresh RTE data) |
-| `docker/` | Dockerfiles, per-service requirements, job scripts |
+| `dags/` | Airflow DAGs (`batch_dag`, `retrain_dag`) and their shared settings |
+| `docker/` | Dockerfiles (trainer, api, airflow), per-service requirements, job scripts |
 | `config/` | reference events added by hand |
 | `data/*.dvc` | DVC receipts (the data itself is in DVC storage) |
 | `notebooks/` | data exploration |
@@ -248,3 +278,4 @@ lock file (`statsforecast 2.0.3` requires `scipy < 1.16`); our own code uses
 - DVC storage is DagsHub (hosted). A production setup would use S3-compatible
   object storage (e.g. MinIO locally, or AWS S3) for both DVC and MLflow artifacts.
 - No authentication on the API yet (Phase 3).
+- The DAG tasks still run as root inside the trainer container, so files in `models/` belong to root on the host (to fix with the host user id).

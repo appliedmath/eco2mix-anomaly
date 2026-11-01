@@ -30,3 +30,6 @@ mlruns/
 
 # Local secrets (copy .env.example to .env)
 .env
+
+# Airflow logs (written by the containers)
+/airflow/

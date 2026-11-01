@@ -9,3 +9,5 @@ mlflow/
 mlruns/
 notebooks/
 *.ipynb
+airflow/
+dags/
