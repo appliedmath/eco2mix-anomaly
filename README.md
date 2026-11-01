@@ -107,8 +107,12 @@ Reading these numbers:
 
 ## Run it with Docker
 
-Requirements: Docker Desktop (with WSL integration on Windows), Git, Python 3.12
-with `uv` (only for DVC and tests).
+Requirements:
+- Docker Desktop (with WSL integration on Windows) and **at least 8 GB RAM
+  available to Docker**. On WSL2, a VM or Docker Desktop for Mac, check that
+  8 GB are allocated to it. The whole stack (MLflow, API, Airflow) uses about
+  3.6 GB, about 5 GB while a training job runs.
+- Git, Python 3.12 with `uv` (only for DVC and tests).
 
 ```bash
 git clone git@github.com:appliedmath/eco2mix-anomaly.git
@@ -121,7 +125,8 @@ docker compose up -d --build                # mlflow, then trainer, then api
 docker compose ps -a                        # trainer "Exited (0)", others "Up"
 ```
 
-- MLflow: http://localhost:5000 (Model training → Runs; Models → `grid-anomaly-detector`)
+- MLflow: http://localhost:5000 (Model training → Runs; Models → `grid-anomaly-detector`).
+  Port taken (e.g. by AirPlay on macOS)? Set `MLFLOW_PORT=5001` in `.env`.
 - API docs: http://localhost:8000/docs
 
 Without `dvc pull`, the trainer downloads the data from RTE itself.
