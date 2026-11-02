@@ -104,6 +104,8 @@ services:
       - AIRFLOW_URL=http://airflow-webserver:8080
       - AIRFLOW_USER=${AIRFLOW_ADMIN_USER:-admin}
       - AIRFLOW_PASSWORD=${AIRFLOW_ADMIN_PASSWORD:-}
+      # X-API-Key required on POST /train and /predict (empty = locked, 500)
+      - API_KEY=${API_KEY:-}
     # no ports: reachable from your machine only through nginx (:8000)
     volumes:
       - ./data:/app/data:ro

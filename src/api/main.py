@@ -12,6 +12,7 @@ from src.api.airflow_client import (
     AirflowUnavailable,
     client_from_env,
 )
+from src.api.security import require_api_key
 from src.models.anomaly_days import paris_day_bounds, summarize_days
 from src.models.model import load_model
 
@@ -226,13 +227,17 @@ def start_dag(airflow: AirflowClient, dag_id: str, conf: dict) -> dict:
     }
 
 
-@app.post("/train", status_code=202)
+@app.post(
+    "/train", status_code=202, dependencies=[Depends(require_api_key)]
+)
 def train(airflow: AirflowClient = Depends(get_airflow)):
     """Retrain now (retrain_dag): promote-or-reject decides if the new model is used."""
     return start_dag(airflow, "retrain_dag", {})
 
 
-@app.post("/predict", status_code=202)
+@app.post(
+    "/predict", status_code=202, dependencies=[Depends(require_api_key)]
+)
 def predict(days: int = Query(1, ge=1, le=31),
             airflow: AirflowClient = Depends(get_airflow)):
     """Inject the next `days` of data and score them (batch_dag)."""

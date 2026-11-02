@@ -4,6 +4,7 @@ from fastapi.testclient import TestClient
 
 from src.api.airflow_client import AirflowClient, AirflowError, AirflowUnavailable
 from src.api.main import app, get_airflow, new_run_id
+from src.api.security import require_api_key
 
 
 class FakeAirflow:
@@ -44,6 +45,7 @@ def make_client():
     def _make(**kwargs):
         fake = FakeAirflow(**kwargs)
         app.dependency_overrides[get_airflow] = lambda: fake
+        app.dependency_overrides[require_api_key] = lambda: None
         return TestClient(app), fake
     yield _make
     app.dependency_overrides.clear()
