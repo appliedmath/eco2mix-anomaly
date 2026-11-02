@@ -157,6 +157,7 @@ def test_anomaly_day_outside_data_is_404(client):
 
 def test_detections_reload_when_file_changes(tmp_path, monkeypatch):
     import os
+
     import src.api.main as api
     monkeypatch.setattr(api, "MODEL_DIR", str(tmp_path))
     path = tmp_path / "detections.parquet"

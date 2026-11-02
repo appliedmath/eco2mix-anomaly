@@ -46,5 +46,5 @@ def test_take_batch_moves_whole_days():
 def test_take_batch_when_nothing_left():
     train, _ = split_holdout(make_df(), 0.2)
     empty = train.iloc[:0]
-    same, rest, batch = take_batch(train, empty)
+    same, _rest, batch = take_batch(train, empty)
     assert batch.empty and len(same) == len(train)
