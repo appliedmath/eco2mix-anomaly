@@ -130,8 +130,38 @@ cd eco2mix-anomaly
 uv venv --python 3.12 && source .venv/bin/activate
 uv pip install -r requirements-dev.txt     # includes dvc
 dvc pull                                    # data/raw, processed, incoming (from DagsHub)
+```
 
-docker compose up -d --build                # mlflow, then trainer, then api
+**Set up `.env` once** (works on Linux, WSL and macOS). It writes the values
+that depend on your machine and random secrets; nothing of it goes into git:
+
+```bash
+cp .env.example .env
+rnd() { python3 -c "import secrets; print(secrets.token_urlsafe(${1:-24}))"; }
+sed -i.bak \
+  -e "s|^HOST_PROJECT_DIR=.*|HOST_PROJECT_DIR=$(pwd)|" \
+  -e "s|^AIRFLOW_UID=.*|AIRFLOW_UID=$(id -u)|" \
+  -e "s|^DOCKER_GID=.*|DOCKER_GID=$(stat -L -c %g /var/run/docker.sock 2>/dev/null || echo 0)|" \
+  -e "s|^API_KEY=.*|API_KEY=$(rnd 32)|" \
+  -e "s|^AIRFLOW_ADMIN_PASSWORD=.*|AIRFLOW_ADMIN_PASSWORD=$(rnd)|" \
+  -e "s|^AIRFLOW_DB_PASSWORD=.*|AIRFLOW_DB_PASSWORD=$(rnd)|" \
+  -e "s|^AIRFLOW_FERNET_KEY=.*|AIRFLOW_FERNET_KEY=$(python3 -c 'import base64,os; print(base64.urlsafe_b64encode(os.urandom(32)).decode())')|" \
+  -e "s|^AIRFLOW_SECRET_KEY=.*|AIRFLOW_SECRET_KEY=$(rnd 32)|" \
+  .env && rm .env.bak
+mkdir -p airflow/logs                       # before the first start, else Docker creates it as root
+grep -E "^(HOST_PROJECT_DIR|AIRFLOW_UID|DOCKER_GID)=" .env   # check: your project folder, your user id
+```
+
+`HOST_PROJECT_DIR` **must** be this folder on your machine: Airflow's tasks
+mount `data/` and `models/` from it. A wrong value only shows up when a DAG
+runs (`bind source path does not exist`). Your Airflow password:
+`grep AIRFLOW_ADMIN_PASSWORD .env` (only on your screen). On Docker Desktop
+for Mac `DOCKER_GID` becomes `0`, which is right there.
+
+**Start:**
+
+```bash
+docker compose up -d --build                # mlflow, then trainer, then api, nginx, Airflow
 docker compose ps -a                        # trainer "Exited (0)", others "Up"
 ```
 
@@ -218,15 +248,10 @@ DockerOperator chapter.
 Both tasks share a pool with one slot, so two jobs never write `models/` at
 the same time.
 
-**First time:**
-
-```bash
-cp .env.example .env        # then fill in the Airflow block:
-#   HOST_PROJECT_DIR=$(pwd)  AIRFLOW_UID=$(id -u)  DOCKER_GID=$(stat -L -c %g /var/run/docker.sock)
-#   admin password, DB password, two random keys (command in .env.example)
-mkdir -p airflow/logs
-docker compose up -d --build
-```
+**First time:** set up `.env` and `airflow/logs` as in
+[Run it with Docker](#run-it-with-docker), then `docker compose up -d --build`.
+Moved the project folder? Run the `HOST_PROJECT_DIR` line again and
+`docker compose up -d`.
 
 Airflow UI: http://localhost:8080 (user and password from `.env`). DAGs start
 **paused**: switch one on with its toggle, or press ▶ to run it once.
