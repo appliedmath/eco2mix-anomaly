@@ -11,8 +11,12 @@ that serves the results.
 |---|---|---|
 | **1** | Scoping, objectives and metrics; RTE data collected and cleaned (UTC 30-minute grid, clock-change fix, validation); MSTL detector and two baselines evaluated on reference events; read-only FastAPI service; unit tests | ✅ done |
 | **2** | Docker services (MLflow, trainer, batch, API), MLflow tracking, DVC data versioning (DagsHub), 80/20 split with batch prediction on new data, promote-or-reject retraining with the MLflow Model Registry | ✅ done |
-| **3** | Airflow DAGs for batch prediction and retraining, API endpoints to trigger them, API security, CI with GitHub Actions | 🔄 in progress: Airflow + DAGs |
+| **3** | Airflow DAGs for batch prediction and retraining (DockerOperator); API endpoints that start them through Airflow (`POST /train`, `POST /predict`); MLflow model signature; NGINX as single entry point; API key; CI with GitHub Actions | ✅ done (tag `v0.3`) |
 | **4** | Prometheus + Grafana monitoring, drift detection, Streamlit dashboard | ⏳ planned |
+
+**Documentation:** [Architecture](docs/architecture.md) (services, who calls
+whom, flows, design decisions) · [CI/CD strategy](docs/cicd_strategy.md)
+(what happens when code, data or the model change).
 
 ## Architecture
 
@@ -126,8 +130,38 @@ cd eco2mix-anomaly
 uv venv --python 3.12 && source .venv/bin/activate
 uv pip install -r requirements-dev.txt     # includes dvc
 dvc pull                                    # data/raw, processed, incoming (from DagsHub)
+```
 
-docker compose up -d --build                # mlflow, then trainer, then api
+**Set up `.env` once** (works on Linux, WSL and macOS). It writes the values
+that depend on your machine and random secrets; nothing of it goes into git:
+
+```bash
+cp .env.example .env
+rnd() { python3 -c "import secrets; print(secrets.token_urlsafe(${1:-24}))"; }
+sed -i.bak \
+  -e "s|^HOST_PROJECT_DIR=.*|HOST_PROJECT_DIR=$(pwd)|" \
+  -e "s|^AIRFLOW_UID=.*|AIRFLOW_UID=$(id -u)|" \
+  -e "s|^DOCKER_GID=.*|DOCKER_GID=$(stat -L -c %g /var/run/docker.sock 2>/dev/null || echo 0)|" \
+  -e "s|^API_KEY=.*|API_KEY=$(rnd 32)|" \
+  -e "s|^AIRFLOW_ADMIN_PASSWORD=.*|AIRFLOW_ADMIN_PASSWORD=$(rnd)|" \
+  -e "s|^AIRFLOW_DB_PASSWORD=.*|AIRFLOW_DB_PASSWORD=$(rnd)|" \
+  -e "s|^AIRFLOW_FERNET_KEY=.*|AIRFLOW_FERNET_KEY=$(python3 -c 'import base64,os; print(base64.urlsafe_b64encode(os.urandom(32)).decode())')|" \
+  -e "s|^AIRFLOW_SECRET_KEY=.*|AIRFLOW_SECRET_KEY=$(rnd 32)|" \
+  .env && rm .env.bak
+mkdir -p airflow/logs                       # before the first start, else Docker creates it as root
+grep -E "^(HOST_PROJECT_DIR|AIRFLOW_UID|DOCKER_GID)=" .env   # check: your project folder, your user id
+```
+
+`HOST_PROJECT_DIR` **must** be this folder on your machine: Airflow's tasks
+mount `data/` and `models/` from it. A wrong value only shows up when a DAG
+runs (`bind source path does not exist`). Your Airflow password:
+`grep AIRFLOW_ADMIN_PASSWORD .env` (only on your screen). On Docker Desktop
+for Mac `DOCKER_GID` becomes `0`, which is right there.
+
+**Start:**
+
+```bash
+docker compose up -d --build                # mlflow, then trainer, then api, nginx, Airflow
 docker compose ps -a                        # trainer "Exited (0)", others "Up"
 ```
 
@@ -214,15 +248,10 @@ DockerOperator chapter.
 Both tasks share a pool with one slot, so two jobs never write `models/` at
 the same time.
 
-**First time:**
-
-```bash
-cp .env.example .env        # then fill in the Airflow block:
-#   HOST_PROJECT_DIR=$(pwd)  AIRFLOW_UID=$(id -u)  DOCKER_GID=$(stat -L -c %g /var/run/docker.sock)
-#   admin password, DB password, two random keys (command in .env.example)
-mkdir -p airflow/logs
-docker compose up -d --build
-```
+**First time:** set up `.env` and `airflow/logs` as in
+[Run it with Docker](#run-it-with-docker), then `docker compose up -d --build`.
+Moved the project folder? Run the `HOST_PROJECT_DIR` line again and
+`docker compose up -d`.
 
 Airflow UI: http://localhost:8080 (user and password from `.env`). DAGs start
 **paused**: switch one on with its toggle, or press ▶ to run it once.
@@ -254,17 +283,27 @@ curl "http://localhost:8000/anomaly-day?day=2026-07-14"
 ```
 
 Start a job and follow it (Airflow must be running and the DAG switched on;
-a paused DAG returns `409`, Airflow not reachable returns `503`):
+a paused DAG returns `409`, Airflow not reachable returns `503`).
+`POST /train` and `POST /predict` need the **API key** from `.env` in the
+header `X-API-Key` (missing → `401`, wrong → `403`); the read endpoints stay
+open. In `/docs`, click **Authorize** and paste the key.
 
 ```bash
-curl -X POST http://localhost:8000/train
+export API_KEY=$(grep ^API_KEY= .env | cut -d= -f2-)
+curl -X POST -H "X-API-Key: $API_KEY" http://localhost:8000/train
 # {"dag_id":"retrain_dag","run_id":"api__20261030T150000_ab12","state":"queued","status_url":"/runs/retrain_dag/api__20261030T150000_ab12"}
 curl http://localhost:8000/runs/retrain_dag/api__20261030T150000_ab12
 ```
 
+Set your own key once: replace `API_KEY=change-me` in `.env` with a random
+value (`python3 -c "import secrets; print(secrets.token_urlsafe(32))"`) and
+restart the API (`docker compose up -d --no-deps api`). If `API_KEY` is empty
+the job endpoints stay locked (`500`).
+
 The API logs in to Airflow with the Airflow user from `.env`
-(`AIRFLOW_ADMIN_USER` / `AIRFLOW_ADMIN_PASSWORD`). Access control for
-`/train` and `/predict` comes with the API key (next step).
+(`AIRFLOW_ADMIN_USER` / `AIRFLOW_ADMIN_PASSWORD`). Fine for this project; in
+production it would be a dedicated service account with only the rights to
+start DAG runs.
 
 ## Single entry point: NGINX
 
@@ -325,6 +364,7 @@ lock file (`statsforecast 2.0.3` requires `scipy < 1.16`); our own code uses
 | `dags/` | Airflow DAGs (`batch_dag`, `retrain_dag`) and their shared settings |
 | `docker/` | Dockerfiles (trainer, api, airflow), per-service requirements, job scripts, `nginx/default.conf` |
 | `config/` | reference events added by hand |
+| `docs/` | `architecture.md`, `cicd_strategy.md` |
 | `data/*.dvc` | DVC receipts (the data itself is in DVC storage) |
 | `notebooks/` | data exploration |
 | `tests/` | unit tests |
