@@ -68,7 +68,7 @@ def test_predict_passes_days_to_batch_dag(make_client):
     response = client.post("/predict?days=7")
     assert response.status_code == 202
     assert fake.triggered[0][0] == "batch_dag"
-    assert fake.triggered[0][2] == {"days": 7}
+    assert fake.triggered[0][2] == {"days": 7, "source": "replay"}
 
 
 @pytest.mark.parametrize("days", [0, 32, -1])
