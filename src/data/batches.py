@@ -71,3 +71,27 @@ def fetch_live_batch(processed: pd.DataFrame, download=None):
     end = paris_midnight(actual.index.max() + pd.Timedelta(minutes=30))
     batch = actual[(actual.index > last) & (actual.index < end)]
     return pd.concat([processed, batch]).sort_index(), batch
+
+
+BATCH_INFO_PATH = Path("models/batch/last_batch.json")
+
+
+def _utc(ts) -> pd.Timestamp:
+    ts = pd.Timestamp(ts)
+    return ts.tz_localize("UTC") if ts.tzinfo is None else ts.tz_convert("UTC")
+
+
+def check_batch(processed: pd.DataFrame, start, end) -> list[str]:
+    """Data-quality problems of the injected batch [start, end] (UTC).
+
+    Uses the Phase 1 validate(); the half-hour before the batch is included,
+    so a gap between the old and the new data is found too.
+    """
+    from src.data.process import validate
+
+    start, end = _utc(start), _utc(end)
+    batch = processed[(processed.index >= start) & (processed.index <= end)]
+    if batch.empty:
+        return ["the injected batch is empty"]
+    before = processed[processed.index < start].tail(1)
+    return validate(pd.concat([before, batch]))
