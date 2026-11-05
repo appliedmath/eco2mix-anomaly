@@ -1,4 +1,6 @@
 """batch_dag: new data arrives, the saved model scores it."""
+import os
+
 import pendulum
 from airflow import DAG
 from airflow.providers.docker.operators.docker import DockerOperator
@@ -12,12 +14,12 @@ with DAG(
     catchup=False,
     max_active_runs=1,
     default_args=DEFAULT_ARGS,
-    params={"source": "live", "days": 1},
+    params={"source": os.getenv("BATCH_SOURCE", "replay"), "days": 1},
     tags=["eco2mix", "batch"],
     doc_md="""
 ### Batch prediction
 1. **inject_batch** adds new data to the processed data. `source=live`
-   (default): all new complete days from the RTE API (consolidated + real-time).
+   (BATCH_SOURCE in .env): all new complete days from the RTE API (consolidated + real-time).
    `source=replay`: the next `days` held-out days from `data/incoming/`.
 2. **predict** scores only the new half-hours with the saved champion model
    and updates `models/detections.parquet` and `models/anomaly_days.csv`.
