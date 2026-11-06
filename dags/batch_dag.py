@@ -28,6 +28,10 @@ with DAG(
 3. **predict** scores only the new half-hours with the saved champion model
    and updates `models/detections.parquet` and `models/anomaly_days.csv`.
    The API shows the result without a restart.
+4. **drift** compares the new days with the same weeks of earlier years
+   (Evidently: consumption, RTE forecast, z-score), writes an HTML report to
+   `models/drift/reports/` and the drift fields of `models/drift/latest.json`.
+   Drift only raises an alert (Grafana); it never fails the run.
 
 Replay for a demo: `{"source": "replay", "days": 7}` as the run conf.
 """,
@@ -48,4 +52,10 @@ Replay for a demo: `{"source": "replay", "days": 7}` as the run conf.
         **trainer_task_kwargs(),
     )
 
-    inject >> validate >> predict
+    drift = DockerOperator(
+        task_id="drift",
+        command="python -m scripts.drift_batch",
+        **trainer_task_kwargs(),
+    )
+
+    inject >> validate >> predict >> drift
