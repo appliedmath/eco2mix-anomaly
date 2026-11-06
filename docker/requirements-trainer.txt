@@ -9,3 +9,4 @@ statsmodels==0.15.0
 scipy==1.15.3
 patsy==1.0.3
 mlflow-skinny==3.17.0
+evidently==0.7.2
