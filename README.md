@@ -291,8 +291,8 @@ open. In `/docs`, click **Authorize** and paste the key.
 ```bash
 export API_KEY=$(grep ^API_KEY= .env | cut -d= -f2-)
 curl -X POST -H "X-API-Key: $API_KEY" http://localhost:8000/train
-# {"dag_id":"retrain_dag","run_id":"api__20261030T150000_ab12","state":"queued","status_url":"/runs/retrain_dag/api__20261030T150000_ab12"}
-curl http://localhost:8000/runs/retrain_dag/api__20261030T150000_ab12
+# {"dag_id":"retrain_dag","run_id":"api__20261030T150000_ab12cd34","state":"queued","status_url":"/runs/retrain_dag/api__20261030T150000_ab12cd34"}
+curl http://localhost:8000/runs/retrain_dag/api__20261030T150000_ab12cd34
 ```
 
 Set your own key once: replace `API_KEY=change-me` in `.env` with a random

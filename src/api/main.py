@@ -196,8 +196,11 @@ def get_airflow() -> AirflowClient:
 
 
 def new_run_id() -> str:
-    """Readable, unique run id, so API-started runs are easy to spot in Airflow."""
-    return f"api__{datetime.now(UTC):%Y%m%dT%H%M%S}_{uuid.uuid4().hex[:4]}"
+    """Readable, unique run id, so API-started runs are easy to spot in Airflow.
+
+    8 random hex characters (4 billion values): even many requests in the
+    same second practically never get the same id."""
+    return f"api__{datetime.now(UTC):%Y%m%dT%H%M%S}_{uuid.uuid4().hex[:8]}"
 
 
 def airflow_problem(err: AirflowError) -> str:
