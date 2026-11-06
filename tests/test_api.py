@@ -60,6 +60,7 @@ def test_health(client):
         "status": "ok",
         "model_version": "test-1",
         "last_data": "2026-07-15 23:30:00+00:00",
+        "newest_data": "2026-07-15 23:00:00+00:00",   # 23:30 not measured yet
     }
 
 

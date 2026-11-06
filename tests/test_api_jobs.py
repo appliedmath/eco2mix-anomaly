@@ -101,7 +101,7 @@ def test_wrong_airflow_login_is_explained(make_client):
 
 def test_run_status(make_client):
     client, _ = make_client()
-    response = client.get("/runs/retrain_dag/api__20261030T102848_ab12")
+    response = client.get("/runs/retrain_dag/api__20261030T102848_ab12cd34")
     assert response.status_code == 200
     body = response.json()
     assert body["state"] == "success"
@@ -119,7 +119,8 @@ def test_unknown_dag_returns_422(make_client):
 
 
 def test_run_ids_are_unique():
-    assert len({new_run_id() for _ in range(50)}) == 50
+    # all made in the same second: only the random part differs
+    assert len({new_run_id() for _ in range(1000)}) == 1000
 
 
 def test_client_sends_basic_auth():

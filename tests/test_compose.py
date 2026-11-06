@@ -30,3 +30,8 @@ def test_nginx_forwards_to_existing_services():
 def test_job_endpoints_are_rate_limited():
     block = NGINX_CONF.split("location ~ ^/(train|predict)$", 1)[1].split("}", 1)[0]
     assert "limit_req zone=jobs" in block
+
+
+def test_metrics_is_closed_from_outside():
+    block = NGINX_CONF.split("location = /metrics", 1)[1].split("}", 1)[0]
+    assert "return 403" in block

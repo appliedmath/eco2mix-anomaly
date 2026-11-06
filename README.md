@@ -266,7 +266,7 @@ After a run, the API picks up the new files automatically (no restart).
 
 | Endpoint | Returns |
 |---|---|
-| `GET /health` | status, `model_version`, `last_data` |
+| `GET /health` | status, `model_version`, `last_data` (end of training data), `newest_data` (newest measured half-hour) |
 | `GET /model-info` | training metadata and metrics |
 | `GET /anomaly-day?day=YYYY-MM-DD` | was there an anomaly on this Paris calendar day? Points, max \|z\|, peak time; optional `detector` |
 | `GET /anomalies?start=&end=` | flagged half-hours; optional `detector`, `only_anomalies` |
@@ -291,8 +291,8 @@ open. In `/docs`, click **Authorize** and paste the key.
 ```bash
 export API_KEY=$(grep ^API_KEY= .env | cut -d= -f2-)
 curl -X POST -H "X-API-Key: $API_KEY" http://localhost:8000/train
-# {"dag_id":"retrain_dag","run_id":"api__20261030T150000_ab12","state":"queued","status_url":"/runs/retrain_dag/api__20261030T150000_ab12"}
-curl http://localhost:8000/runs/retrain_dag/api__20261030T150000_ab12
+# {"dag_id":"retrain_dag","run_id":"api__20261030T150000_ab12cd34","state":"queued","status_url":"/runs/retrain_dag/api__20261030T150000_ab12cd34"}
+curl http://localhost:8000/runs/retrain_dag/api__20261030T150000_ab12cd34
 ```
 
 Set your own key once: replace `API_KEY=change-me` in `.env` with a random
@@ -304,6 +304,32 @@ The API logs in to Airflow with the Airflow user from `.env`
 (`AIRFLOW_ADMIN_USER` / `AIRFLOW_ADMIN_PASSWORD`). Fine for this project; in
 production it would be a dedicated service account with only the rights to
 start DAG runs.
+
+## Monitoring metrics (`/metrics`)
+
+The API exposes Prometheus metrics on `GET /metrics` (Prometheus text format,
+own registry, as in the course). Prometheus reads it **inside Docker**
+(`http://api:8000/metrics`); NGINX closes it from outside (403).
+
+| Metric | Type | Meaning |
+|---|---|---|
+| `api_requests_total{endpoint,method,status_code}` | Counter | requests per route (route template, e.g. `/runs/{dag_id}/{run_id}`) |
+| `api_request_duration_seconds{endpoint,method,status_code}` | Histogram | latency → P95 in Grafana |
+| `model_info{version}`, `model_k`, `model_trained_timestamp_seconds` | Gauge | champion in use |
+| `model_recall{detector}`, `model_false_alarms_per_week{detector}` | Gauge | model performance (reference events) |
+| `data_last_timestamp_seconds` | Gauge | newest measured half-hour → data freshness |
+| `detections_last_timestamp_seconds`, `anomalies_last_7d{detector}` | Gauge | newest scored half-hour, flagged half-hours in the last 7 days |
+| `batch_rows`, `batch_end_timestamp_seconds`, `data_quality_failed`, `drift_detected`, `drift_share`, `anomaly_rate_last_batch` | Gauge | last batch, from `models/drift/latest.json` (batch_dag) |
+
+The model, data and batch values are read from the files at each scrape;
+a value that does not exist yet is not exported (Grafana shows "no data").
+`/health` also returns `newest_data` (newest measured half-hour) next to
+`last_data` (end of the training data).
+
+```bash
+docker compose exec nginx wget -qO- http://api:8000/metrics | grep -E "^(model_|data_|api_requests_total)" | head
+curl -s -o /dev/null -w "%{http_code}\n" http://localhost:8000/metrics   # 403 from outside
+```
 
 ## Single entry point: NGINX
 

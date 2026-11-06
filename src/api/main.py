@@ -1,10 +1,12 @@
 import os
+import time
 import uuid
 from datetime import UTC, date, datetime
 from typing import Literal
 
 import pandas as pd
-from fastapi import Depends, FastAPI, HTTPException, Query
+from fastapi import Depends, FastAPI, HTTPException, Query, Request, Response
+from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
 
 from src.api.airflow_client import (
     AirflowClient,
@@ -12,6 +14,7 @@ from src.api.airflow_client import (
     AirflowUnavailable,
     client_from_env,
 )
+from src.api.metrics import REGISTRY, StateCollector, observe, status_path_from_env
 from src.api.security import require_api_key
 from src.models.anomaly_days import paris_day_bounds, summarize_days
 from src.models.model import load_model
@@ -72,13 +75,48 @@ def day_range(start: date, end: date):
     return low, high
 
 
+def newest_measured(data) -> str | None:
+    measured = data.index[~data["is_future"].astype(bool)]
+    return str(measured.max()) if len(measured) else None
+
+
 @app.get("/health")
-def health(meta=Depends(get_meta)):
+def health(meta=Depends(get_meta), data=Depends(get_series_data)):
     return {
         "status": "ok",
         "model_version": meta["model_version"],
-        "last_data": meta["data_end"],
+        "last_data": meta["data_end"],         # end of the training data
+        "newest_data": newest_measured(data),  # newest measured half-hour
     }
+
+
+# ---------- Monitoring: Prometheus metrics ----------
+
+REGISTRY.register(StateCollector(get_meta, get_series_data, get_detections,
+                                 status_path_from_env(MODEL_DIR)))
+
+
+@app.middleware("http")
+async def count_requests(request: Request, call_next):
+    """Count every request and measure its duration (labels: route template,
+    so /runs/x/y is one series, not one per run id)."""
+    start = time.perf_counter()
+    status = 500
+    try:
+        response = await call_next(request)
+        status = response.status_code
+        return response
+    finally:
+        route = request.scope.get("route")
+        endpoint = getattr(route, "path", "unmatched")
+        if endpoint != "/metrics":
+            observe(endpoint, request.method, status, time.perf_counter() - start)
+
+
+@app.get("/metrics", include_in_schema=False)
+def metrics():
+    """For Prometheus (inside Docker). NGINX blocks it from outside."""
+    return Response(generate_latest(REGISTRY), media_type=CONTENT_TYPE_LATEST)
 
 
 @app.get("/model-info")
@@ -196,8 +234,11 @@ def get_airflow() -> AirflowClient:
 
 
 def new_run_id() -> str:
-    """Readable, unique run id, so API-started runs are easy to spot in Airflow."""
-    return f"api__{datetime.now(UTC):%Y%m%dT%H%M%S}_{uuid.uuid4().hex[:4]}"
+    """Readable, unique run id, so API-started runs are easy to spot in Airflow.
+
+    8 random hex characters (4 billion values): even many requests in the
+    same second practically never get the same id."""
+    return f"api__{datetime.now(UTC):%Y%m%dT%H%M%S}_{uuid.uuid4().hex[:8]}"
 
 
 def airflow_problem(err: AirflowError) -> str:
