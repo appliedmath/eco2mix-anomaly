@@ -12,3 +12,9 @@ select = ["E4", "E7", "E9", "F", "I", "RUF"]
 
 [tool.ruff.lint.per-file-ignores]
 "tests/test_train_helpers.py" = ["E402"]
+
+[tool.ruff.lint.isort]
+# our own packages: sorted after the third-party imports, on every machine
+# (otherwise ruff may guess differently depending on the environment)
+known-first-party = ["src", "scripts"]
+known-third-party = ["mlflow", "airflow"]
