@@ -11,7 +11,10 @@ Two kinds of numbers:
    (every 15 s), so they are always current without any extra job:
      model_info{version}, model_k, model_trained_timestamp_seconds
      model_recall{detector}, model_false_alarms_per_week{detector}
-     data_last_timestamp_seconds          newest measured half-hour (freshness)
+     data_last_timestamp_seconds          newest measured half-hour (data time)
+     data_updated_timestamp_seconds       when the processed data file last
+                                          changed (wall clock: is the pipeline
+                                          still adding data? -> NoNewData alert)
      detections_last_timestamp_seconds    newest scored half-hour
      anomalies_last_7d{detector}          flagged half-hours in the last 7 days
      batch_* / data_quality_failed / drift_*   from models/drift/latest.json
@@ -64,11 +67,13 @@ class StateCollector:
     """Reads model, data and batch state when Prometheus scrapes /metrics."""
 
     def __init__(self, get_meta: Callable, get_data: Callable,
-                 get_detections: Callable, status_path: Callable[[], str]):
+                 get_detections: Callable, status_path: Callable[[], str],
+                 data_path: Callable[[], str] | None = None):
         self.get_meta = get_meta
         self.get_data = get_data
         self.get_detections = get_detections
         self.status_path = status_path
+        self.data_path = data_path
 
     def collect(self):
         for part in (self._model, self._data, self._batch):
@@ -97,6 +102,10 @@ class StateCollector:
             yield family
 
     def _data(self):
+        if self.data_path is not None:
+            yield _gauge("data_updated_timestamp_seconds",
+                         "When the processed data file was last updated",
+                         os.path.getmtime(self.data_path()))
         data = self.get_data()
         measured = data.index[~data["is_future"].astype(bool)]
         if len(measured):

@@ -48,8 +48,12 @@ def test_model_and_data_gauges(tmp_path):
         "batch_end": "2026-01-10T22:30:00Z", "n_rows": 48, "source": "replay",
         "quality_failed": False, "quality_problems": [],
         "drift_detected": None, "drift_share": None, "anomaly_rate": None}))
-    m = scrape(StateCollector(lambda: META, data, detections, lambda: str(status)))
+    data_file = tmp_path / "data.parquet"
+    data_file.write_bytes(b"x")
+    m = scrape(StateCollector(lambda: META, data, detections, lambda: str(status),
+                              data_path=lambda: str(data_file)))
 
+    assert m["data_updated_timestamp_seconds"] == data_file.stat().st_mtime
     assert m['model_info{version="20261104-121941"}'] == 1
     assert m["model_k"] == 4.0
     assert m['model_recall{detector="mstl"}'] == 0.875
