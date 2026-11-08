@@ -33,3 +33,7 @@ mlruns/
 
 # Airflow logs (written by the containers)
 /airflow/
+
+# backups made by sed -i.bak (contain the secrets of .env)
+.env.bak
+*.bak
