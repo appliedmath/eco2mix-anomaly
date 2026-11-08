@@ -95,3 +95,13 @@ def check_batch(processed: pd.DataFrame, start, end) -> list[str]:
         return ["the injected batch is empty"]
     before = processed[processed.index < start].tail(1)
     return validate(pd.concat([before, batch]))
+
+
+REJECTED_DIR = Path("data/rejected")
+
+
+def reject_batch(processed: pd.DataFrame, start, end):
+    """Split the batch [start, end] (UTC) off the processed data: (kept, rejected)."""
+    start, end = _utc(start), _utc(end)
+    in_batch = (processed.index >= start) & (processed.index <= end)
+    return processed[~in_batch], processed[in_batch]

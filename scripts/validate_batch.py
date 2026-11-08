@@ -12,7 +12,13 @@ from pathlib import Path
 
 import pandas as pd
 
-from src.data.batches import BATCH_INFO_PATH, PROCESSED_PATH, check_batch
+from src.data.batches import (
+    BATCH_INFO_PATH,
+    PROCESSED_PATH,
+    REJECTED_DIR,
+    check_batch,
+    reject_batch,
+)
 
 STATUS_PATH = Path("models/drift/latest.json")
 
@@ -36,13 +42,22 @@ def main() -> int:
         "drift_share": None,
         "anomaly_rate": None,
         "report": None,
+        "rejected_file": None,
     }
+    if problems:  # keep bad rows away from predict and retraining
+        kept, rejected = reject_batch(processed, info["start"], info["end"])
+        REJECTED_DIR.mkdir(parents=True, exist_ok=True)
+        path = REJECTED_DIR / f"batch_{pd.Timestamp(info['end']).date()}.parquet"
+        rejected.to_parquet(path)
+        kept.to_parquet(PROCESSED_PATH)
+        status["rejected_file"] = str(path)
     STATUS_PATH.parent.mkdir(parents=True, exist_ok=True)
     STATUS_PATH.write_text(json.dumps(status, indent=2))
 
     if problems:
         for p in problems:
             print("Data quality problem:", p)
+        print(f"Batch removed from the processed data, saved to {status['rejected_file']}")
         return 1
     print(f"Data quality OK: {info['rows']} rows, {info['start']} -> {info['end']}")
     return 0

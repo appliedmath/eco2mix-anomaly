@@ -44,7 +44,7 @@ Replay for a demo: `{"source": "replay", "days": 7}` as the run conf.
     validate = DockerOperator(
         task_id="validate",
         command="python -m scripts.validate_batch",
-        **trainer_task_kwargs(),
+        **{**trainer_task_kwargs(), "retries": 0},  # same data fails again
     )
     predict = DockerOperator(
         task_id="predict",
