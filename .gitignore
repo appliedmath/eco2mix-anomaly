@@ -37,3 +37,6 @@ mlruns/
 # backups made by sed -i.bak (contain the secrets of .env)
 .env.bak
 *.bak
+
+# batches rejected by the validate task (data, not code)
+data/rejected/

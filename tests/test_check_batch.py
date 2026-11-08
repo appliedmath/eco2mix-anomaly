@@ -2,7 +2,7 @@
 import numpy as np
 import pandas as pd
 
-from src.data.batches import check_batch
+from src.data.batches import check_batch, reject_batch
 from src.data.process import RENAME, add_flags, to_30min_grid
 
 START = "2026-01-08 23:00"
@@ -34,3 +34,11 @@ def test_problems_before_the_batch_are_ignored():
     df = make_processed()
     df.loc[pd.Timestamp("2026-01-03 12:00", tz="UTC"), "consumption_mw"] = -5.0
     assert check_batch(df, START, END) == []
+
+
+def test_reject_batch_removes_only_the_batch():
+    df = make_processed()
+    kept, rejected = reject_batch(df, START, END)
+    assert len(rejected) == 2 * 48
+    assert kept.index.max() < pd.Timestamp(START, tz="UTC")
+    assert len(kept) + len(rejected) == len(df)
