@@ -60,10 +60,13 @@ def fetch_live_batch(processed: pd.DataFrame, download=None):
     download = download or rte_download
     last = processed.index[~processed["is_future"]].max()
     start = (paris_midnight(last) - pd.Timedelta(days=1)).strftime("%Y-%m-%d")
-    raw = pd.concat(                                      # consolidated first, like Phase 1
-        [download("cons-def", start=start), download("tr", start=start)],
-        ignore_index=True,
-    )
+    # consolidated first, like Phase 1; an empty part (cons-def ends on 2026-08-31)
+    # would turn every column into object dtype, so it is left out
+    parts = [download(source, start=start) for source in ("cons-def", "tr")]
+    parts = [part for part in parts if len(part)]
+    if not parts:
+        return processed, processed.iloc[0:0]
+    raw = pd.concat(parts, ignore_index=True)
     fresh = add_flags(to_30min_grid(raw))
     actual = fresh[~fresh["is_future"]]
     if actual.empty:
