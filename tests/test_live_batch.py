@@ -36,3 +36,17 @@ def test_live_batch_nothing_new():
 
     assert batch.empty
     assert len(new) == len(processed)
+
+
+def test_live_batch_when_cons_def_is_empty():
+    """After 2026-08-31 the consolidated dataset is empty: only tr is used."""
+    def download(source, start=None, timeout=300):
+        if source == "cons-def":
+            return pd.DataFrame(columns=["date_heure", *RENAME])
+        return make_raw("2026-01-08 23:00", "2026-01-10 10:00")
+
+    processed = add_flags(to_30min_grid(make_raw("2026-01-01 23:00", "2026-01-08 22:30")))
+    new, batch = fetch_live_batch(processed, download=download)
+    assert batch.index.min() == pd.Timestamp("2026-01-08 23:00", tz="UTC")
+    assert batch.index.max() == pd.Timestamp("2026-01-09 22:30", tz="UTC")
+    assert not new.index.duplicated().any()
