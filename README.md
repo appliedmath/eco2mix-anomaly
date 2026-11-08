@@ -321,6 +321,9 @@ own registry, as in the course). Prometheus reads it **inside Docker**
 | `data_last_timestamp_seconds` | Gauge | newest measured half-hour (time of the data) |
 | `data_updated_timestamp_seconds` | Gauge | when the processed data file last changed → `NoNewData` alert |
 | `detections_last_timestamp_seconds`, `anomalies_last_7d{detector}` | Gauge | newest scored half-hour, flagged half-hours in the last 7 days |
+| `anomaly_days_last_7d{detector}` | Gauge | days with an alert in the last 7 days (business KPI: operator alert load) |
+| `input_drift_detected`, `input_drift_share`, `prediction_drift_detected`, `prediction_drift_score` | Gauge | drift of the inputs (consumption, RTE forecast) and of the model's z-score, from `latest.json` |
+| `model_recall_rolling`, `false_alarms_per_week_rolling` | Gauge | model quality on live data (holidays of the last 90 days), from `latest.json` |
 | `batch_rows`, `batch_end_timestamp_seconds`, `data_quality_failed`, `drift_detected`, `drift_share`, `anomaly_rate_last_batch` | Gauge | last batch, from `models/drift/latest.json` (batch_dag) |
 
 The model, data and batch values are read from the files at each scrape;

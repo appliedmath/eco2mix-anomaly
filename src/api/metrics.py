@@ -17,6 +17,8 @@ Two kinds of numbers:
                                           still adding data? -> NoNewData alert)
      detections_last_timestamp_seconds    newest scored half-hour
      anomalies_last_7d{detector}          flagged half-hours in the last 7 days
+     anomaly_days_last_7d{detector}       days with an alert in the last 7 days
+                                          (business KPI: operator alert load)
      batch_* / data_quality_failed / drift_*   from models/drift/latest.json
                                                (written by the batch_dag tasks)
    A value that is not available yet (no file, field is null) is simply not
@@ -125,6 +127,15 @@ class StateCollector:
                 family.add_metric([detector], float(group["is_anomaly"].sum()))
             yield family
 
+            days = GaugeMetricFamily("anomaly_days_last_7d",
+                                     "Paris days with at least one alert in the last 7 scored days",
+                                     labels=["detector"])
+            for detector, group in recent.groupby("detector"):
+                flagged = group.loc[group["is_anomaly"].astype(bool), "timestamp_utc"]
+                n_days = flagged.dt.tz_convert("Europe/Paris").dt.date.nunique()
+                days.add_metric([detector], float(n_days))
+            yield days
+
     def _batch(self):
         with open(self.status_path()) as f:
             status = json.load(f)
@@ -143,6 +154,17 @@ class StateCollector:
         yield _gauge("anomaly_rate_last_batch",
                      "Share of flagged half-hours in the last batch",
                      status.get("anomaly_rate"))
+        # finer drift and live model quality (written by the drift task)
+        for key, doc in (
+                ("input_drift_share", "Share of drifted input columns (consumption, RTE forecast)"),
+                ("prediction_drift_score", "Drift score of the model's z-score"),
+                ("model_recall_rolling", "Share of the public holidays of the last 90 days flagged"),
+                ("false_alarms_per_week_rolling",
+                 "Alert days per week that are not holidays (upper bound)")):
+            yield _gauge(key, doc, status.get(key))
+        for key, doc in (("input_drift_detected", "1 if the inputs drifted"),
+                         ("prediction_drift_detected", "1 if the z-score drifted")):
+            yield _gauge(key, doc, flag(status.get(key)))
 
 
 def status_path_from_env(model_dir: str) -> Callable[[], str]:
