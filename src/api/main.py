@@ -282,7 +282,7 @@ def train(airflow: AirflowClient = Depends(get_airflow)):
 def predict(days: int = Query(1, ge=1, le=31),
             airflow: AirflowClient = Depends(get_airflow)):
     """Inject the next `days` of data and score them (batch_dag)."""
-    return start_dag(airflow, "batch_dag", {"days": days})
+    return start_dag(airflow, "batch_dag", {"days": days, "source": "replay"})
 
 
 @app.get("/runs/{dag_id}/{run_id}")

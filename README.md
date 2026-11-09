@@ -233,6 +233,10 @@ docker compose run --rm trainer             # retrain on it
 docker compose down                         # stop everything (data and runs are kept)
 ```
 
+`BATCH_SOURCE=live` appends new days to `data/processed/`, which is tracked
+by DVC: reset with `dvc checkout --force`, and do not `dvc push` it by accident
+(it would change the shared data on DagsHub).
+
 ## Orchestration with Airflow
 
 Airflow 2.11 (LocalExecutor, own Postgres) runs next to the other services.
@@ -284,6 +288,19 @@ curl "http://localhost:8000/anomaly-day?day=2026-07-14"
 
 Start a job and follow it (Airflow must be running and the DAG switched on;
 a paused DAG returns `409`, Airflow not reachable returns `503`).
+**New data for `batch_dag`** comes from `BATCH_SOURCE` in `.env`:
+`replay` (default) moves the next held-out days from `data/incoming/`
+(offline, repeatable); `live` downloads all new complete days from the RTE
+API (team extension). Switch, then recreate the Airflow containers:
+
+```bash
+sed -i.bak 's/^BATCH_SOURCE=.*/BATCH_SOURCE=live/' .env && docker compose up -d
+```
+
+**For a demo, keep `BATCH_SOURCE=replay`.** Unpausing `batch_dag` starts one
+scheduled run at once; with `live` it fetches all new days, and
+`POST /predict` (always replay) then finds nothing new.
+
 `POST /train` and `POST /predict` need the **API key** from `.env` in the
 header `X-API-Key` (missing → `401`, wrong → `403`); the read endpoints stay
 open. In `/docs`, click **Authorize** and paste the key.
