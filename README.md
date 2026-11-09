@@ -1,5 +1,7 @@
 # Grid anomaly detection (France, RTE éCO2mix)
 
+[![CI](https://github.com/appliedmath/eco2mix-anomaly/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/appliedmath/eco2mix-anomaly/actions/workflows/ci.yml)
+
 Detects abnormal behaviour in French national electricity consumption at
 30-minute resolution, and runs the whole lifecycle as an MLOps pipeline:
 versioned data, tracked training, batch prediction on new data, and an API
