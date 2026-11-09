@@ -1,0 +1,8 @@
+# Own ignore file for api-k8s.Dockerfile (BuildKit): unlike the main
+# .dockerignore, models/ and the processed data ARE needed here.
+*
+!data/processed/consumption_30min.parquet
+!models
+models/candidate/
+models/batch/
+**/__pycache__

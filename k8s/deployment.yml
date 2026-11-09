@@ -1,0 +1,54 @@
+# The API as a Kubernetes Deployment: 3 identical, stateless replicas.
+# Kubernetes keeps 3 running (self-healing), restarts a pod whose /health
+# fails (liveness), sends traffic only to ready pods (readiness) and replaces
+# pods one by one on a new image (rolling update, no downtime).
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: eco2mix-api
+  namespace: eco2mix
+  labels:
+    app: eco2mix-api
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: eco2mix-api
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0      # never fewer than 3 ready pods during an update
+      maxSurge: 1
+  template:
+    metadata:
+      labels:
+        app: eco2mix-api
+    spec:
+      containers:
+        - name: api
+          image: eco2mix-api-k8s:latest
+          imagePullPolicy: Never   # local image (Docker Desktop), no registry
+          ports:
+            - containerPort: 8000
+          envFrom:
+            - configMapRef:
+                name: eco2mix-api-config
+          env:
+            - name: API_KEY
+              valueFrom:
+                secretKeyRef: {name: eco2mix-api-secrets, key: API_KEY}
+            - name: AIRFLOW_PASSWORD
+              valueFrom:
+                secretKeyRef: {name: eco2mix-api-secrets, key: AIRFLOW_PASSWORD}
+          readinessProbe:
+            httpGet: {path: /health, port: 8000}
+            initialDelaySeconds: 5
+            periodSeconds: 5
+          livenessProbe:
+            httpGet: {path: /health, port: 8000}
+            initialDelaySeconds: 20
+            periodSeconds: 10
+            failureThreshold: 3
+          resources:
+            requests: {cpu: 100m, memory: 256Mi}
+            limits: {cpu: "1", memory: 1Gi}

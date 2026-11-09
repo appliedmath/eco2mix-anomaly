@@ -1,0 +1,13 @@
+# Non-secret settings of the API pods (environment variables).
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: eco2mix-api-config
+  namespace: eco2mix
+data:
+  MODEL_DIR: /app/models
+  DATA_PATH: /app/data/processed/consumption_30min.parquet
+  # Airflow runs in Docker Compose; the pods reach it through NGINX on the
+  # host (Docker Desktop provides host.docker.internal inside the cluster).
+  AIRFLOW_URL: http://host.docker.internal:8080
+  AIRFLOW_USER: admin
