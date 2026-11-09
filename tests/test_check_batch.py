@@ -42,3 +42,14 @@ def test_reject_batch_removes_only_the_batch():
     assert len(rejected) == 2 * 48
     assert kept.index.max() < pd.Timestamp(START, tz="UTC")
     assert len(kept) + len(rejected) == len(df)
+
+
+def test_after_a_rejected_batch_the_next_clean_batch_passes():
+    df = make_processed()
+    batch1 = ("2026-01-08 23:00", "2026-01-09 22:30")
+    batch2 = ("2026-01-09 23:00", "2026-01-10 22:30")
+    kept, _ = reject_batch(df, *batch1)
+    # without the record the gap is still found
+    assert any("irregular" in p for p in check_batch(kept, *batch2))
+    # with the rejected range the next clean batch passes
+    assert check_batch(kept, *batch2, rejected_ranges=[batch1]) == []
