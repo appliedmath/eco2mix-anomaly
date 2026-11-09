@@ -114,5 +114,6 @@ Releases are tagged in git at the end of each phase (`v0.3` = Phase 3).
 | Promote-or-reject gate, MLflow registry, signature | ✅ |
 | Retraining through the API (`POST /train` → Airflow) | ✅ |
 | Alerts on new champion, drift check | ⏳ Phase 4 |
-| Images built in CI and pushed to a registry | optional (described above) |
+| Images built in CI (api, trainer, airflow; no push) | ✅ (job `docker-build`) |
+| Images pushed to a registry | optional (described above) |
 | Human approval with `@challenger` | optional (described above) |
