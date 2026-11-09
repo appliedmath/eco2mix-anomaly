@@ -384,6 +384,38 @@ curl -s -o /dev/null -w "%{http_code}\n" http://localhost:8000/metrics   # 403 f
   Windows/macOS itself.
 - RAM: the three services add about 300–400 MB.
 
+**Dashboards** (Grafana → Dashboards → folder `eco2mix`; built from
+`monitoring/grafana/build_dashboards.py`, committed as JSON):
+
+| Dashboard | Shows |
+|---|---|
+| `0 · Stack health` | targets up, champion version, data age (one glance) |
+| `1 · API performance` | API containers up, requests/s, 5xx share, P95 latency (SLO 200 ms), requests rejected by the API key, per-endpoint and per-status graphs |
+| `2 · Model & data` | champion, K, training recall / false alarms; data freshness (red after 36 h), last batch rows / quality / end; input and prediction drift; rolling recall and false alarms on live data; business KPI `anomaly_days_last_7d` |
+| `3 · Infrastructure` | scraped targets, CPU, RAM, disk, network, load (node-exporter) |
+
+**Alerts**
+
+| Alert | Where | Fires when |
+|---|---|---|
+| `ApiDown` | Prometheus | no API container answers `/metrics` for 1 min |
+| `NoNewData` | Prometheus | the processed data was not updated for 36 h |
+| `DataQualityFailed` | Grafana | the last batch failed validation (moved to `data/rejected/`) |
+| `InputDriftDetected` | Grafana | consumption / RTE forecast differ from the same weeks of earlier years |
+| `PredictionDriftDetected` | Grafana | the z-score distribution changed (score > 0.2) |
+| `RollingRecallLow` | Grafana | fewer than half of the recent weekday holidays were caught |
+| `NewChampion` | Grafana | the champion version changed in the last 30 min (info) |
+
+Drift and quality alerts **never retrain automatically**: a person reads the
+Evidently report (`models/drift/reports/`) and decides (`POST /train`).
+Prometheus alerts: http://localhost:9090/alerts; Grafana alerts: Alerting → Alert rules.
+Alerts are shown in Grafana only; in production they would be sent by email or Slack
+(Alertmanager / Grafana contact point).
+
+To change a dashboard: edit `build_dashboards.py`, run
+`python monitoring/grafana/build_dashboards.py`, commit the script and the JSON
+(a test checks both match), then `docker compose restart grafana`.
+
 ```bash
 # .env from before Phase 4? add the Grafana password once:
 grep -q "^GRAFANA_ADMIN_PASSWORD=" .env || echo "GRAFANA_ADMIN_PASSWORD=$(python3 -c 'import secrets; print(secrets.token_urlsafe(16))')" >> .env

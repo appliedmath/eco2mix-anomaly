@@ -1,0 +1,141 @@
+# ML alerts, defined in Grafana (system alerts ApiDown / NoNewData are in Prometheus).
+# Loaded at start-up (provisioning); visible under Alerting -> Alert rules.
+# Rule: A = PromQL query, B = last value, C = condition on B.
+# Missing metric (e.g. before the first drift run) = "no data" = OK, not an alert.
+apiVersion: 1
+groups:
+  - orgId: 1
+    name: eco2mix-ml
+    folder: eco2mix
+    interval: 1m
+    rules:
+      - uid: eco2mix-data-quality-failed
+        title: DataQualityFailed
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange: {from: 600, to: 0}
+            datasourceUid: prometheus
+            model: {refId: A, expr: max(data_quality_failed), instant: true}
+          - refId: B
+            datasourceUid: __expr__
+            model: {refId: B, type: reduce, expression: A, reducer: last}
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: B
+              conditions: [{evaluator: {type: gt, params: [0]}}]
+        noDataState: OK
+        execErrState: Error
+        for: 0s
+        labels: {severity: critical, team: eco2mix}
+        annotations:
+          summary: The last batch failed the data quality checks
+          description: The batch was moved to data/rejected/ and was not scored. Check the validate task log in Airflow (batch_dag).
+
+      - uid: eco2mix-input-drift
+        title: InputDriftDetected
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange: {from: 600, to: 0}
+            datasourceUid: prometheus
+            model: {refId: A, expr: max(input_drift_detected), instant: true}
+          - refId: B
+            datasourceUid: __expr__
+            model: {refId: B, type: reduce, expression: A, reducer: last}
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: B
+              conditions: [{evaluator: {type: gt, params: [0]}}]
+        noDataState: OK
+        execErrState: Error
+        for: 0s
+        labels: {severity: warning, team: eco2mix}
+        annotations:
+          summary: The new data differs from the same weeks of earlier years
+          description: Alert only, no automatic retraining (drift can come from corrupted data or a real change). Open the Evidently report in models/drift/reports/, check the rolling recall, then decide whether to retrain (POST /train).
+
+      - uid: eco2mix-prediction-drift
+        title: PredictionDriftDetected
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange: {from: 600, to: 0}
+            datasourceUid: prometheus
+            model: {refId: A, expr: max(prediction_drift_detected), instant: true}
+          - refId: B
+            datasourceUid: __expr__
+            model: {refId: B, type: reduce, expression: A, reducer: last}
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: B
+              conditions: [{evaluator: {type: gt, params: [0]}}]
+        noDataState: OK
+        execErrState: Error
+        for: 0s
+        labels: {severity: warning, team: eco2mix}
+        annotations:
+          summary: The model's z-scores are distributed differently than usual
+          description: Prediction drift score above 0.2. Alert only; compare with the rolling recall before retraining.
+
+      - uid: eco2mix-recall-drop
+        title: RollingRecallLow
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange: {from: 600, to: 0}
+            datasourceUid: prometheus
+            model: {refId: A, expr: min(model_recall_rolling), instant: true}
+          - refId: B
+            datasourceUid: __expr__
+            model: {refId: B, type: reduce, expression: A, reducer: last}
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: B
+              conditions: [{evaluator: {type: lt, params: [0.5]}}]
+        noDataState: OK
+        execErrState: Error
+        for: 0s
+        labels: {severity: warning, team: eco2mix}
+        annotations:
+          summary: The model caught fewer than half of the recent weekday holidays
+          description: Model quality on live data dropped (model_recall_rolling < 0.5). Retrain and compare (promote-or-reject protects the champion).
+
+      - uid: eco2mix-new-champion
+        title: NewChampion
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange: {from: 1800, to: 0}
+            datasourceUid: prometheus
+            # two different versions within 30 min = the champion changed
+            model: {refId: A, expr: 'count(count by (version) (count_over_time(model_info[30m])))', instant: true}
+          - refId: B
+            datasourceUid: __expr__
+            model: {refId: B, type: reduce, expression: A, reducer: last}
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: B
+              conditions: [{evaluator: {type: gt, params: [1]}}]
+        noDataState: OK
+        execErrState: Error
+        for: 0s
+        labels: {severity: info, team: eco2mix}
+        annotations:
+          summary: A new champion model is in use
+          description: A retraining was promoted (promote-or-reject). Check the new version in MLflow; rollback = move the alias @champion to the previous version.
