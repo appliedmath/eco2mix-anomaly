@@ -46,3 +46,31 @@ def take_batch(processed: pd.DataFrame, incoming: pd.DataFrame,
     batch = incoming[incoming.index < end]
     rest = incoming[incoming.index >= end]
     return pd.concat([processed, batch]).sort_index(), rest, batch
+
+
+def fetch_live_batch(processed: pd.DataFrame, download=None):
+    """Download the RTE days after the last processed one (complete Paris days only).
+
+    Uses the same steps as Phase 1 (collect -> 30-min grid -> flags).
+    Returns (new processed, the batch that was added).
+    """
+    from src.data.collect import download as rte_download
+    from src.data.process import add_flags, to_30min_grid
+
+    download = download or rte_download
+    last = processed.index[~processed["is_future"]].max()
+    start = (paris_midnight(last) - pd.Timedelta(days=1)).strftime("%Y-%m-%d")
+    # consolidated first, like Phase 1; an empty part (cons-def ends on 2026-08-31)
+    # would turn every column into object dtype, so it is left out
+    parts = [download(source, start=start) for source in ("cons-def", "tr")]
+    parts = [part for part in parts if len(part)]
+    if not parts:
+        return processed, processed.iloc[0:0]
+    raw = pd.concat(parts, ignore_index=True)
+    fresh = add_flags(to_30min_grid(raw))
+    actual = fresh[~fresh["is_future"]]
+    if actual.empty:
+        return processed, actual
+    end = paris_midnight(actual.index.max() + pd.Timedelta(minutes=30))
+    batch = actual[(actual.index > last) & (actual.index < end)]
+    return pd.concat([processed, batch]).sort_index(), batch

@@ -1,4 +1,6 @@
 """batch_dag: new data arrives, the saved model scores it."""
+import os
+
 import pendulum
 from airflow import DAG
 from airflow.providers.docker.operators.docker import DockerOperator
@@ -6,28 +8,29 @@ from eco2mix_common import DEFAULT_ARGS, trainer_task_kwargs
 
 with DAG(
     dag_id="batch_dag",
-    description="Inject the next day(s) of data, then score them with the champion model",
+    description="Fetch the new days from the RTE API (or replay held-out days), then score them",
     schedule="@daily",
     start_date=pendulum.datetime(2026, 10, 1, tz="UTC"),
     catchup=False,
     max_active_runs=1,
     default_args=DEFAULT_ARGS,
-    params={"days": 1},
+    params={"source": os.getenv("BATCH_SOURCE", "replay"), "days": 1},
     tags=["eco2mix", "batch"],
     doc_md="""
 ### Batch prediction
-1. **inject_batch** moves the next `days` of data from `data/incoming/` into
-   the processed data (simulates new data arriving).
+1. **inject_batch** adds new data to the processed data. `source=live`
+   (BATCH_SOURCE in .env): all new complete days from the RTE API (consolidated + real-time).
+   `source=replay`: the next `days` held-out days from `data/incoming/`.
 2. **predict** scores only the new half-hours with the saved champion model
    and updates `models/detections.parquet` and `models/anomaly_days.csv`.
    The API shows the result without a restart.
 
-Trigger with another number of days: `{"days": 7}` as the run conf.
+Replay for a demo: `{"source": "replay", "days": 7}` as the run conf.
 """,
 ) as dag:
     inject = DockerOperator(
         task_id="inject_batch",
-        command="python -m scripts.inject_batch --days {{ params.days }}",
+        command="python -m scripts.inject_batch --source {{ params.source }} --days {{ params.days }}",
         **trainer_task_kwargs(),
     )
     predict = DockerOperator(

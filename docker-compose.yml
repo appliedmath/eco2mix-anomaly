@@ -33,6 +33,7 @@ x-airflow-common: &airflow-common
     AIRFLOW__CORE__LOAD_EXAMPLES: "false"
     AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION: "true"
     AIRFLOW__API__AUTH_BACKENDS: airflow.api.auth.backend.basic_auth,airflow.api.auth.backend.session
+    BATCH_SOURCE: ${BATCH_SOURCE:-replay}   # default source of the scheduled batch_dag: live | replay
     HOST_PROJECT_DIR: ${HOST_PROJECT_DIR:?set HOST_PROJECT_DIR in .env}
     TRAINER_IMAGE: eco2mix-anomaly-trainer:latest
     COMPOSE_NETWORK: eco2mix-anomaly_default
