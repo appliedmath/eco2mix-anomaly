@@ -16,7 +16,9 @@ from src.data.batches import (
     BATCH_INFO_PATH,
     PROCESSED_PATH,
     REJECTED_DIR,
+    add_rejected_range,
     check_batch,
+    load_rejected_ranges,
     reject_batch,
 )
 
@@ -30,7 +32,7 @@ def main() -> int:
         return 0
 
     processed = pd.read_parquet(PROCESSED_PATH)
-    problems = check_batch(processed, info["start"], info["end"])
+    problems = check_batch(processed, info["start"], info["end"], load_rejected_ranges())
 
     status = {
         "batch_end": info["end"],
@@ -50,6 +52,7 @@ def main() -> int:
         path = REJECTED_DIR / f"batch_{pd.Timestamp(info['end']).date()}.parquet"
         rejected.to_parquet(path)
         kept.to_parquet(PROCESSED_PATH)
+        add_rejected_range(info["start"], info["end"])  # the next batch may follow the gap
         status["rejected_file"] = str(path)
     STATUS_PATH.parent.mkdir(parents=True, exist_ok=True)
     STATUS_PATH.write_text(json.dumps(status, indent=2))
