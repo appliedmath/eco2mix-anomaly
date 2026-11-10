@@ -4,6 +4,7 @@ The last part of the cleaned series is held back in data/incoming/.
 inject_batch moves the next few days from incoming back into the
 processed file, as if RTE had just published them.
 """
+import json
 from pathlib import Path
 
 import pandas as pd
@@ -74,3 +75,72 @@ def fetch_live_batch(processed: pd.DataFrame, download=None):
     end = paris_midnight(actual.index.max() + pd.Timedelta(minutes=30))
     batch = actual[(actual.index > last) & (actual.index < end)]
     return pd.concat([processed, batch]).sort_index(), batch
+
+
+BATCH_INFO_PATH = Path("models/batch/last_batch.json")
+
+
+def _utc(ts) -> pd.Timestamp:
+    ts = pd.Timestamp(ts)
+    return ts.tz_localize("UTC") if ts.tzinfo is None else ts.tz_convert("UTC")
+
+
+def _covered(gap_start, gap_end, ranges) -> bool:
+    """True if every half-hour from gap_start to gap_end is inside one of the ranges."""
+    pos = gap_start
+    for low, high in sorted((_utc(a), _utc(b)) for a, b in ranges):
+        if low <= pos <= high + pd.Timedelta(minutes=30):
+            pos = max(pos, high + pd.Timedelta(minutes=30))
+    return pos > gap_end
+
+
+def check_batch(processed: pd.DataFrame, start, end, rejected_ranges=()) -> list[str]:
+    """Data-quality problems of the injected batch [start, end] (UTC).
+
+    Uses the Phase 1 validate(); the half-hour before the batch is included,
+    so a gap between the old and the new data is found too. A gap that is
+    exactly one or more earlier rejected batches is allowed (in replay those
+    days are gone for good), so one rejection does not block all later batches.
+    """
+    from src.data.process import validate
+
+    start, end = _utc(start), _utc(end)
+    batch = processed[(processed.index >= start) & (processed.index <= end)]
+    if batch.empty:
+        return ["the injected batch is empty"]
+    before = processed[processed.index < start].tail(1)
+    if len(before):
+        gap_start = before.index[-1] + pd.Timedelta(minutes=30)
+        gap_end = start - pd.Timedelta(minutes=30)
+        if gap_start <= gap_end and _covered(gap_start, gap_end, rejected_ranges):
+            before = before.iloc[0:0]
+    return validate(pd.concat([before, batch]))
+
+
+REJECTED_DIR = Path("data/rejected")
+
+
+def reject_batch(processed: pd.DataFrame, start, end):
+    """Split the batch [start, end] (UTC) off the processed data: (kept, rejected)."""
+    start, end = _utc(start), _utc(end)
+    in_batch = (processed.index >= start) & (processed.index <= end)
+    return processed[~in_batch], processed[in_batch]
+
+
+REJECTED_RANGES_PATH = REJECTED_DIR / "ranges.json"
+
+
+def load_rejected_ranges(path=REJECTED_RANGES_PATH) -> list[tuple]:
+    """(start, end) of the batches rejected so far."""
+    path = Path(path)
+    if not path.exists():
+        return []
+    return [(item["start"], item["end"]) for item in json.loads(path.read_text())]
+
+
+def add_rejected_range(start, end, path=REJECTED_RANGES_PATH) -> None:
+    path = Path(path)
+    ranges = json.loads(path.read_text()) if path.exists() else []
+    ranges.append({"start": _utc(start).isoformat(), "end": _utc(end).isoformat()})
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(ranges, indent=2))
