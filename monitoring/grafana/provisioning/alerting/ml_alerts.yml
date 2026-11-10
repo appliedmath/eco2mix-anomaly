@@ -36,7 +36,7 @@ groups:
           description: The batch was moved to data/rejected/ and was not scored. Check the validate task log in Airflow (batch_dag).
 
       - uid: eco2mix-input-drift
-        title: InputDriftDetected
+        title: InputDrift
         condition: C
         data:
           - refId: A
@@ -62,13 +62,13 @@ groups:
           description: Alert only, no automatic retraining (drift can come from corrupted data or a real change). Open the Evidently report in models/drift/reports/, check the rolling recall, then decide whether to retrain (POST /train).
 
       - uid: eco2mix-prediction-drift
-        title: PredictionDriftDetected
+        title: PredictionDrift
         condition: C
         data:
           - refId: A
             relativeTimeRange: {from: 600, to: 0}
             datasourceUid: prometheus
-            model: {refId: A, expr: max(prediction_drift_detected), instant: true}
+            model: {refId: A, expr: max(prediction_drift_score), instant: true}
           - refId: B
             datasourceUid: __expr__
             model: {refId: B, type: reduce, expression: A, reducer: last}
@@ -78,7 +78,7 @@ groups:
               refId: C
               type: threshold
               expression: B
-              conditions: [{evaluator: {type: gt, params: [0]}}]
+              conditions: [{evaluator: {type: gt, params: [0.2]}}]
         noDataState: OK
         execErrState: Error
         for: 0s
@@ -88,7 +88,7 @@ groups:
           description: Prediction drift score above 0.2. Alert only; compare with the rolling recall before retraining.
 
       - uid: eco2mix-recall-drop
-        title: RollingRecallLow
+        title: ModelRecallLow
         condition: C
         data:
           - refId: A
@@ -104,14 +104,66 @@ groups:
               refId: C
               type: threshold
               expression: B
-              conditions: [{evaluator: {type: lt, params: [0.5]}}]
+              conditions: [{evaluator: {type: lt, params: [0.7]}}]
         noDataState: OK
         execErrState: Error
         for: 0s
         labels: {severity: warning, team: eco2mix}
         annotations:
-          summary: The model caught fewer than half of the recent weekday holidays
-          description: Model quality on live data dropped (model_recall_rolling < 0.5). Retrain and compare (promote-or-reject protects the champion).
+          summary: The model caught less than 70 % of the weekday holidays of the last year
+          description: Model quality on live data dropped (model_recall_rolling < 0.7). Retrain and compare (promote-or-reject protects the champion).
+
+      - uid: eco2mix-false-alarms-high
+        title: FalseAlarmsHigh
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange: {from: 600, to: 0}
+            datasourceUid: prometheus
+            model: {refId: A, expr: max(false_alarms_per_week_rolling), instant: true}
+          - refId: B
+            datasourceUid: __expr__
+            model: {refId: B, type: reduce, expression: A, reducer: last}
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: B
+              conditions: [{evaluator: {type: gt, params: [1]}}]
+        noDataState: OK
+        execErrState: Error
+        for: 0s
+        labels: {severity: warning, team: eco2mix}
+        annotations:
+          summary: More than one non-holiday alert day per week (last 28 days)
+          description: Upper bound (some can be real events). Check the days in models/anomaly_days.csv before changing the threshold or retraining.
+
+      - uid: eco2mix-alert-load-high
+        title: AlertLoadHigh
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange: {from: 600, to: 0}
+            datasourceUid: prometheus
+            model: {refId: A, expr: 'max(anomaly_days_last_7d{detector="mstl"})', instant: true}
+          - refId: B
+            datasourceUid: __expr__
+            model: {refId: B, type: reduce, expression: A, reducer: last}
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: B
+              conditions: [{evaluator: {type: gt, params: [3]}}]
+        noDataState: OK
+        execErrState: Error
+        for: 0s
+        labels: {severity: warning, team: eco2mix}
+        annotations:
+          summary: The champion raised alerts on more than 3 of the last 7 days
+          description: Business KPI (operator alert load, alert fatigue). Review the threshold K or the flagged days.
 
       - uid: eco2mix-new-champion
         title: NewChampion

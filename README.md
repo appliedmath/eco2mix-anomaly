@@ -342,7 +342,7 @@ own registry, as in the course). Prometheus reads it **inside Docker**
 | `detections_last_timestamp_seconds`, `anomalies_last_7d{detector}` | Gauge | newest scored half-hour, flagged half-hours in the last 7 days |
 | `anomaly_days_last_7d{detector}` | Gauge | days with an alert in the last 7 days (business KPI: operator alert load) |
 | `input_drift_detected`, `input_drift_share`, `prediction_drift_detected`, `prediction_drift_score` | Gauge | drift of the inputs (consumption, RTE forecast) and of the model's z-score, from `latest.json` |
-| `model_recall_rolling`, `false_alarms_per_week_rolling` | Gauge | model quality on live data (holidays of the last 90 days), from `latest.json` |
+| `model_recall_rolling`, `false_alarms_per_week_rolling` | Gauge | model quality on live data (weekday holidays of the last 365 days; non-holiday alert days of the last 28 days), from `latest.json` |
 | `batch_rows`, `batch_end_timestamp_seconds`, `data_quality_failed`, `drift_detected`, `drift_share`, `anomaly_rate_last_batch` | Gauge | last batch, from `models/drift/latest.json` (batch_dag) |
 
 The model, data and batch values are read from the files at each scrape;
@@ -376,8 +376,9 @@ curl -s -o /dev/null -w "%{http_code}\n" http://localhost:8000/metrics   # 403 f
   `monitoring/prometheus/alert_rules.yml`, Grafana's data source and dashboards in
   `monitoring/grafana/`. A fresh `docker compose up -d` shows everything, no clicking.
 - **Alerts in Prometheus (system):** `ApiDown` (no API container answers for 1 min),
-  `NoNewData` (the processed data was not updated for 36 h). ML alerts (data quality,
-  drift, new champion) are defined in Grafana.
+  `NoNewData` (no new half-hour in the data for 36 h, also when batches are rejected).
+  ML alerts (data quality, drift, model quality, alert load, new champion) are defined in
+  Grafana, with the names of `docs/monitoring_plan.md`.
 - **Secrets:** Grafana's admin password comes from `.env`; sign-up and anonymous access
   are off. Prometheus has no login, so it is published on `127.0.0.1` only.
 - **node-exporter on Docker Desktop** (WSL, macOS) measures the Docker VM, not
@@ -399,11 +400,13 @@ curl -s -o /dev/null -w "%{http_code}\n" http://localhost:8000/metrics   # 403 f
 | Alert | Where | Fires when |
 |---|---|---|
 | `ApiDown` | Prometheus | no API container answers `/metrics` for 1 min |
-| `NoNewData` | Prometheus | the processed data was not updated for 36 h |
+| `NoNewData` | Prometheus | no new half-hour for 36 h (file not updated, or batches rejected) |
 | `DataQualityFailed` | Grafana | the last batch failed validation (moved to `data/rejected/`) |
-| `InputDriftDetected` | Grafana | consumption / RTE forecast differ from the same weeks of earlier years |
-| `PredictionDriftDetected` | Grafana | the z-score distribution changed (score > 0.2) |
-| `RollingRecallLow` | Grafana | fewer than half of the recent weekday holidays were caught |
+| `InputDrift` | Grafana | consumption / RTE forecast differ from the same weeks of earlier years |
+| `PredictionDrift` | Grafana | the z-score distribution changed (score > 0.2) |
+| `ModelRecallLow` | Grafana | less than 70 % of the weekday holidays of the last year were caught |
+| `FalseAlarmsHigh` | Grafana | more than 1 non-holiday alert day per week (last 28 days) |
+| `AlertLoadHigh` | Grafana | the champion flagged more than 3 of the last 7 days (alert fatigue) |
 | `NewChampion` | Grafana | the champion version changed in the last 30 min (info) |
 
 Drift and quality alerts **never retrain automatically**: a person reads the

@@ -135,8 +135,9 @@ def test_grafana_ml_alerts():
     rules = yaml.safe_load((MONITORING / "grafana" / "provisioning" / "alerting"
                             / "ml_alerts.yml").read_text())["groups"][0]["rules"]
     titles = {r["title"] for r in rules}
-    assert titles == {"DataQualityFailed", "InputDriftDetected", "PredictionDriftDetected",
-                      "RollingRecallLow", "NewChampion"}
+    # same names as docs/monitoring_plan.md
+    assert titles == {"DataQualityFailed", "InputDrift", "PredictionDrift", "ModelRecallLow",
+                      "FalseAlarmsHigh", "AlertLoadHigh", "NewChampion"}
     for rule in rules:
         steps = {d["refId"]: d for d in rule["data"]}
         assert rule["condition"] == "C" and set(steps) == {"A", "B", "C"}
