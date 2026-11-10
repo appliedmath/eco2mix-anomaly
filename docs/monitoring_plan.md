@@ -67,7 +67,8 @@ columns drifted.
 | `anomaly_rate_last_batch` | dashboard | > 5 % | warning | normal is about 1 to 2 %; a jump means unusual data or a broken model |
 
 The z-score threshold is 0.2, not Evidently's default 0.1: a week of unchanged
-z-scores already reaches about 0.1 by sampling noise.
+z-scores already reaches about 0.1 by sampling noise. The same threshold is
+passed to Evidently, so the HTML report agrees with `latest.json`.
 
 ## 5. Model drift
 
