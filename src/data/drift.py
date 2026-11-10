@@ -61,7 +61,9 @@ def _evidently_drift(current, reference, columns):
     from evidently import Report
     from evidently.presets import DataDriftPreset
 
-    snapshot = Report([DataDriftPreset()]).run(
+    # the z-score uses our threshold (also in the HTML report), the inputs Evidently's default
+    thresholds = {c: PREDICTION_DRIFT_THRESHOLD for c in columns if c in PREDICTION_COLUMNS}
+    snapshot = Report([DataDriftPreset(per_column_threshold=thresholds or None)]).run(
         current_data=current[columns].reset_index(drop=True),  # Evidently 0.7.2 + pandas 3:
         reference_data=reference[columns].reset_index(drop=True),  # no datetime index
     )
