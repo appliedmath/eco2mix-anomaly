@@ -17,3 +17,4 @@ prometheus-client>=0.20
 streamlit>=1.35
 pytest>=8.0
 httpx
+evidently>=0.7.2

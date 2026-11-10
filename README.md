@@ -18,7 +18,7 @@ that serves the results.
 
 **Documentation:** [Architecture](docs/architecture.md) (services, who calls
 whom, flows, design decisions) · [CI/CD strategy](docs/cicd_strategy.md)
-(what happens when code, data or the model change).
+(what happens when code, data or the model change) · [Monitoring plan](docs/monitoring_plan.md) (metrics, thresholds, alerts, actions) · [Ethics and security](docs/ethics_security.md).
 
 ## Architecture
 
