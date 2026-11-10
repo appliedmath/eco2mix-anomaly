@@ -149,6 +149,7 @@ sed -i.bak \
   -e "s|^AIRFLOW_DB_PASSWORD=.*|AIRFLOW_DB_PASSWORD=$(rnd)|" \
   -e "s|^AIRFLOW_FERNET_KEY=.*|AIRFLOW_FERNET_KEY=$(python3 -c 'import base64,os; print(base64.urlsafe_b64encode(os.urandom(32)).decode())')|" \
   -e "s|^AIRFLOW_SECRET_KEY=.*|AIRFLOW_SECRET_KEY=$(rnd 32)|" \
+  -e "s|^GRAFANA_ADMIN_PASSWORD=.*|GRAFANA_ADMIN_PASSWORD=$(rnd)|" \
   .env && rm .env.bak
 mkdir -p airflow/logs                       # before the first start, else Docker creates it as root
 grep -E "^(HOST_PROJECT_DIR|AIRFLOW_UID|DOCKER_GID)=" .env   # check: your project folder, your user id
@@ -336,8 +337,12 @@ own registry, as in the course). Prometheus reads it **inside Docker**
 | `api_request_duration_seconds{endpoint,method,status_code}` | Histogram | latency → P95 in Grafana |
 | `model_info{version}`, `model_k`, `model_trained_timestamp_seconds` | Gauge | champion in use |
 | `model_recall{detector}`, `model_false_alarms_per_week{detector}` | Gauge | model performance (reference events) |
-| `data_last_timestamp_seconds` | Gauge | newest measured half-hour → data freshness |
+| `data_last_timestamp_seconds` | Gauge | newest measured half-hour (time of the data) |
+| `data_updated_timestamp_seconds` | Gauge | when the processed data file last changed → `NoNewData` alert |
 | `detections_last_timestamp_seconds`, `anomalies_last_7d{detector}` | Gauge | newest scored half-hour, flagged half-hours in the last 7 days |
+| `anomaly_days_last_7d{detector}` | Gauge | days with an alert in the last 7 days (business KPI: operator alert load) |
+| `input_drift_detected`, `input_drift_share`, `prediction_drift_detected`, `prediction_drift_score` | Gauge | drift of the inputs (consumption, RTE forecast) and of the model's z-score, from `latest.json` |
+| `model_recall_rolling`, `false_alarms_per_week_rolling` | Gauge | model quality on live data (holidays of the last 90 days), from `latest.json` |
 | `batch_rows`, `batch_end_timestamp_seconds`, `data_quality_failed`, `drift_detected`, `drift_share`, `anomaly_rate_last_batch` | Gauge | last batch, from `models/drift/latest.json` (batch_dag) |
 
 The model, data and batch values are read from the files at each scrape;
@@ -348,6 +353,43 @@ a value that does not exist yet is not exported (Grafana shows "no data").
 ```bash
 docker compose exec nginx wget -qO- http://api:8000/metrics | grep -E "^(model_|data_|api_requests_total)" | head
 curl -s -o /dev/null -w "%{http_code}\n" http://localhost:8000/metrics   # 403 from outside
+```
+
+## Monitoring: Prometheus and Grafana
+
+```
+ api:8000/metrics ──┐                      ┌── alert rules (ApiDown, NoNewData)
+                    ├─ every 15 s ─▶ Prometheus ◀─────────┘
+ node-exporter ─────┘   (scrape)        │ data source (provisioned)
+ (CPU, RAM, disk)                       ▼
+                                     Grafana ── dashboards = JSON files in monitoring/
+```
+
+| Service | Image | Reach it |
+|---|---|---|
+| `prometheus` | `prom/prometheus:v2.55.1` | http://localhost:9090 (127.0.0.1 only) → Status → Targets |
+| `node-exporter` | `prom/node-exporter:v1.8.2` | only inside Docker (Prometheus reads it) |
+| `grafana` | `grafana/grafana:11.4.0` | http://localhost:3000, user `admin`, password `GRAFANA_ADMIN_PASSWORD` |
+
+- **Configuration as code:** `monitoring/prometheus/prometheus.yml` (scrape every
+  15 s; the API is found by DNS, so `--scale api=3` scrapes every container),
+  `monitoring/prometheus/alert_rules.yml`, Grafana's data source and dashboards in
+  `monitoring/grafana/`. A fresh `docker compose up -d` shows everything, no clicking.
+- **Alerts in Prometheus (system):** `ApiDown` (no API container answers for 1 min),
+  `NoNewData` (the processed data was not updated for 36 h). ML alerts (data quality,
+  drift, new champion) are defined in Grafana.
+- **Secrets:** Grafana's admin password comes from `.env`; sign-up and anonymous access
+  are off. Prometheus has no login, so it is published on `127.0.0.1` only.
+- **node-exporter on Docker Desktop** (WSL, macOS) measures the Docker VM, not
+  Windows/macOS itself.
+- RAM: the three services add about 300–400 MB.
+
+```bash
+# .env from before Phase 4? add the Grafana password once:
+grep -q "^GRAFANA_ADMIN_PASSWORD=" .env || echo "GRAFANA_ADMIN_PASSWORD=$(python3 -c 'import secrets; print(secrets.token_urlsafe(16))')" >> .env
+docker compose up -d                       # starts prometheus, node-exporter, grafana
+docker compose up -d --force-recreate nginx  # nginx gets the ports 3000 and 9090
+curl -s localhost:9090/api/v1/targets | python3 -c "import json,sys; [print(t['labels']['job'], t['health']) for t in json.load(sys.stdin)['data']['activeTargets']]"
 ```
 
 ## Single entry point: NGINX
@@ -361,6 +403,8 @@ stay the same:
 | http://localhost:8000 (`/docs`) | API |
 | http://localhost:5000 | MLflow UI |
 | http://localhost:8080 | Airflow UI and REST API |
+| http://localhost:3000 | Grafana (login: `admin` + `GRAFANA_ADMIN_PASSWORD` from `.env`) |
+| http://localhost:9090 | Prometheus UI (only from this machine: no login) |
 
 What NGINX adds in front of the API:
 - `POST /train` and `POST /predict` are **rate-limited**: 6 per minute per
@@ -380,7 +424,8 @@ curl -I http://localhost:8000/health    # "Server: nginx" + security headers
 ```
 
 Config: `docker/nginx/default.conf`. After changing it:
-`docker compose restart nginx`.
+`docker compose up -d --force-recreate nginx` (a `restart` can keep the old
+mounted file on Docker Desktop/WSL).
 
 ## Development without Docker
 

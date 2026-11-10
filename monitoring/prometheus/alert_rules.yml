@@ -1,0 +1,24 @@
+# System-level alerts, evaluated by Prometheus (ML alerts are in Grafana).
+groups:
+  - name: eco2mix-system
+    rules:
+      - alert: ApiDown
+        # no API container answers /metrics (or none is running at all)
+        expr: sum(up{job="api"}) == 0 or absent(up{job="api"})
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "The API is down"
+          description: "Prometheus could not scrape any API container for 1 minute."
+
+      - alert: NoNewData
+        # the processed data file was not updated for 36 h: the daily
+        # batch_dag did not add data (paused, failing, or no new data at RTE)
+        expr: time() - data_updated_timestamp_seconds > 36 * 3600
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "No new data for more than 36 hours"
+          description: "The processed data was last updated {{ $value | humanizeDuration }} ago. Check batch_dag in Airflow."

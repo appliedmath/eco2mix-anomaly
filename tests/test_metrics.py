@@ -48,8 +48,12 @@ def test_model_and_data_gauges(tmp_path):
         "batch_end": "2026-01-10T22:30:00Z", "n_rows": 48, "source": "replay",
         "quality_failed": False, "quality_problems": [],
         "drift_detected": None, "drift_share": None, "anomaly_rate": None}))
-    m = scrape(StateCollector(lambda: META, data, detections, lambda: str(status)))
+    data_file = tmp_path / "data.parquet"
+    data_file.write_bytes(b"x")
+    m = scrape(StateCollector(lambda: META, data, detections, lambda: str(status),
+                              data_path=lambda: str(data_file)))
 
+    assert m["data_updated_timestamp_seconds"] == data_file.stat().st_mtime
     assert m['model_info{version="20261104-121941"}'] == 1
     assert m["model_k"] == 4.0
     assert m['model_recall{detector="mstl"}'] == 0.875
@@ -57,6 +61,7 @@ def test_model_and_data_gauges(tmp_path):
     assert m["data_last_timestamp_seconds"] == INDEX[-2].timestamp()
     assert m["detections_last_timestamp_seconds"] == INDEX[-2].timestamp()
     assert m['anomalies_last_7d{detector="mstl"}'] == 2     # half-hour 5 is older
+    assert m['anomaly_days_last_7d{detector="mstl"}'] == 1  # 470 + 471: same day
     assert m["batch_rows"] == 48
     assert m["data_quality_failed"] == 0
     assert "drift_detected" not in m and "drift_share" not in m   # null: not exported
@@ -72,6 +77,21 @@ def test_quality_failure_and_drift_are_exported(tmp_path):
     assert m["drift_detected"] == 1
     assert m["drift_share"] == 0.4
     assert m["anomaly_rate_last_batch"] == 0.02
+    assert "input_drift_share" not in m                     # older latest.json: no field
+
+
+def test_split_drift_and_rolling_model_quality(tmp_path):
+    status = tmp_path / "latest.json"
+    status.write_text(json.dumps({
+        "drift_detected": True, "drift_share": 0.67,
+        "input_drift_detected": False, "input_drift_share": 0.5,
+        "prediction_drift_detected": True, "prediction_drift_score": 0.42,
+        "model_recall_rolling": 0.8, "false_alarms_per_week_rolling": 0.3}))
+    m = scrape(StateCollector(lambda: META, data, detections, lambda: str(status)))
+    assert m["input_drift_detected"] == 0 and m["input_drift_share"] == 0.5
+    assert m["prediction_drift_detected"] == 1 and m["prediction_drift_score"] == 0.42
+    assert m["model_recall_rolling"] == 0.8
+    assert m["false_alarms_per_week_rolling"] == 0.3
 
 
 def test_missing_files_export_nothing_instead_of_crashing(tmp_path):

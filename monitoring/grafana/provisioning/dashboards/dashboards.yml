@@ -1,0 +1,11 @@
+# Load every dashboard JSON in /var/lib/grafana/dashboards (= monitoring/grafana/dashboards)
+apiVersion: 1
+providers:
+  - name: eco2mix
+    folder: eco2mix
+    type: file
+    disableDeletion: true
+    allowUiUpdates: false     # dashboards are code: change the JSON, not the UI
+    updateIntervalSeconds: 30
+    options:
+      path: /var/lib/grafana/dashboards

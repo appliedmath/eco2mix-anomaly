@@ -93,7 +93,8 @@ def health(meta=Depends(get_meta), data=Depends(get_series_data)):
 # ---------- Monitoring: Prometheus metrics ----------
 
 REGISTRY.register(StateCollector(get_meta, get_series_data, get_detections,
-                                 status_path_from_env(MODEL_DIR)))
+                                 status_path_from_env(MODEL_DIR),
+                                 data_path=lambda: DATA_PATH))
 
 
 @app.middleware("http")
