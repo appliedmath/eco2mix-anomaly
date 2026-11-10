@@ -5,7 +5,7 @@ alert fires, and what to do. Metrics come from the API's `/metrics` (scraped by
 Prometheus every 15 s), from node-exporter, and from `models/drift/latest.json`,
 which the `validate` and `drift` tasks of `batch_dag` write after each batch.
 System alerts are Prometheus rules (`monitoring/prometheus/alert_rules.yml`);
-ML alerts are Grafana alerts.
+ML alerts are Grafana alerts, provisioned from `monitoring/grafana/`.
 
 We have no daily labels, so we cannot measure accuracy every day. Input drift,
 prediction drift and the rolling holiday recall are our proxies for model
@@ -36,8 +36,7 @@ No GPU: the MSTL detector is statistical and runs on CPU.
 | Metric | Alert | Threshold | Severity | Action |
 |---|---|---|---|---|
 | `data_quality_failed` | `DataQualityFailed` (Grafana) | = 1 | warning | read `quality_problems` in latest.json; the batch is in `data/rejected/` and predict did not run; with `BATCH_SOURCE=live` the days are fetched again on the next run |
-| `data_updated_timestamp_seconds` | `NoNewData` (Prometheus) | file not updated for 36 h | warning | is `batch_dag` paused or failing? Docker running? RTE reachable? |
-| `data_last_timestamp_seconds` (freshness) | dashboard | newest measured half-hour older than 2 days | warning | as above; also catches several rejected days in a row |
+| `data_last_timestamp_seconds` | `NoNewData` (Prometheus) | newest half-hour did not move for 36 h (also catches rejected batches, works in replay) | warning | is `batch_dag` paused or failing? Docker running? RTE reachable? |
 | `batch_rows` | dashboard | 0 on 2 runs in a row (live) | info | RTE has not published a complete new day yet |
 
 Checks in `validate` (Phase 1 `validate()` on the new batch plus the half-hour
@@ -77,7 +76,7 @@ passed to Evidently, so the HTML report agrees with `latest.json`.
 | `model_recall_rolling` | `ModelRecallLow` (Grafana) | < 0.7 | warning | the model misses known events: `POST /train`, compare in MLflow |
 | `false_alarms_per_week_rolling` | `FalseAlarmsHigh` (Grafana) | > 1 | warning | check the days in `models/anomaly_days.csv` |
 | `model_recall`, `model_false_alarms_per_week` | dashboard | | | measured on the reference events at each retraining |
-| `model_info{version}` | dashboard annotation | change | info | a new champion is live |
+| `model_info{version}` | `NewChampion` (Grafana) | version changed | info | a new champion is live: check its run in MLflow |
 
 Rolling recall: share of the weekday public holidays of the last 365 days that
 the mstl detector flagged (a holiday on a weekend does not change consumption).
