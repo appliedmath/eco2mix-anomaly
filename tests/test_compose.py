@@ -18,7 +18,7 @@ def test_only_nginx_has_ports_on_the_machine():
 
 def test_nginx_keeps_the_usual_ports():
     ports = [p.split(":")[-1] for p in SERVICES["nginx"]["ports"]]
-    assert ports == ["8000", "5000", "8080", "3000", "9090"]
+    assert ports == ["8000", "5000", "8080", "3000", "8501", "9090"]
 
 
 def test_nginx_forwards_to_existing_services():
