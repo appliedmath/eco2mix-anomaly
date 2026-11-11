@@ -392,7 +392,7 @@ curl -s -o /dev/null -w "%{http_code}\n" http://localhost:8000/metrics   # 403 f
 |---|---|
 | `0 · Stack health` | targets up, champion version, data age (one glance) |
 | `1 · API performance` | API containers up, requests/s, 5xx share, P95 latency (SLO 200 ms), requests rejected by the API key, per-endpoint and per-status graphs |
-| `2 · Model & data` | champion, K, training recall / false alarms; data freshness (red after 36 h), last batch rows / quality / end; input and prediction drift; rolling recall and false alarms on live data; business KPI `anomaly_days_last_7d` |
+| `2 · Model & data` | champion, K, training recall / false alarms; data freshness (orange after 26 h, red after 36 h); drift shown in orange (alert only), last batch rows / quality / end; input and prediction drift; rolling recall and false alarms on live data; business KPI `anomaly_days_last_7d` |
 | `3 · Infrastructure` | scraped targets, CPU, RAM, disk, network, load (node-exporter) |
 
 **Alerts**

@@ -184,6 +184,10 @@
                 "value": null
               },
               {
+                "color": "orange",
+                "value": 93600
+              },
+              {
                 "color": "red",
                 "value": 129600
               }
