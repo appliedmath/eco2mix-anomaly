@@ -2,9 +2,18 @@
 
 Run: streamlit run streamlit_app/presentation.py --server.port 8502
 """
+import os
+from pathlib import Path
+
+import pandas as pd
+import plotly.graph_objects as go
+import requests
 import streamlit as st
+import streamlit.components.v1 as components
 
 st.set_page_config(page_title="eco2mix-anomaly: defense", page_icon="⚡", layout="wide")
+
+API_URL = os.environ.get("API_URL", "http://localhost:8000").rstrip("/")
 
 TOOLS = {
     "GitHub": "https://github.com/appliedmath/eco2mix-anomaly",
@@ -28,18 +37,48 @@ def header(title: str, owner: str, minutes: int, tools=()) -> None:
 
 
 def intro():
-    header("Anomaly detection on the French electricity grid", "Mina & Shari", 2)
+    st.title("Anomaly detection on the French electricity grid")
+    st.markdown("#### ⚡️ Fatemeh Tayebi & Mina Nadaf")
+    st.markdown("Mentor: Kilyan Poilly · MLOps, November 2026")
+    st.caption("Mina & Shari · 2 min")
     st.markdown(
         "**Problem.** RTE publishes French national electricity consumption every 30 minutes. "
         "An unusual half-hour can mean a real event, a forecast error or bad data, and nobody can watch it all day.\n\n"
         "**Goal.** Flag abnormal half-hours automatically, and run the whole lifecycle as an MLOps system: "
         "new data every night, safe retraining, and monitoring of the data and the model."
     )
+    try:
+        rows = requests.get(f"{API_URL}/anomalies", timeout=15, params={
+            "start": "2026-07-11", "end": "2026-07-17", "detector": "mstl", "only_anomalies": "false"}).json()
+        week = pd.DataFrame(rows)
+        week["time"] = pd.to_datetime(week["timestamp_utc"], utc=True).dt.tz_convert("Europe/Paris")
+        flagged = week[week["is_anomaly"]]
+        fig = go.Figure()
+        fig.add_scatter(x=week["time"], y=week["consumption_mw"], name="Consumption")
+        fig.add_scatter(x=week["time"], y=week["expected_mw"], name="Expected by the model",
+                        line={"dash": "dot", "color": "gray"})
+        fig.add_scatter(x=flagged["time"], y=flagged["consumption_mw"], mode="markers", name="Anomaly",
+                        marker={"color": "red", "size": 8})
+        peak = flagged.loc[flagged["consumption_mw"].idxmax()]
+        fig.add_annotation(x=peak["time"], y=peak["consumption_mw"],
+                           text="14 July: public holiday on a Tuesday,<br>consumption like a Sunday",
+                           showarrow=True, arrowhead=2, ax=-150, ay=-45,
+                           bgcolor="white", bordercolor="red", borderpad=4)
+        fig.update_layout(height=380, yaxis_title="MW", margin={"t": 50, "b": 10},
+                          title="French national consumption, 11-17 July 2026 (live from our API)",
+                          legend={"orientation": "h", "y": -0.15})
+        st.plotly_chart(fig, use_container_width=True)
+    except (requests.RequestException, KeyError, ValueError):
+        st.info("Start the stack to see the live chart (docker compose up -d).")
+    st.graphviz_chart(
+        "digraph { rankdir=LR; node [shape=box, style=rounded, fontname=Helvetica]; "
+        '"RTE data" -> "quality check" -> "MSTL model" -> "anomalies" -> "API" -> "operator app & Grafana" }'
+    )
     c1, c2, c3, c4 = st.columns(4)
-    c1.metric("Phase 1", "Data + model", "scoping, MSTL")
-    c2.metric("Phase 2", "Docker + MLflow + DVC", "tracked, versioned")
-    c3.metric("Phase 3", "Airflow + API + CI", "automated, secured")
-    c4.metric("Phase 4", "Monitoring + drift", "live data, alerts")
+    c1.metric("Phase 1", "Data, model", "scoping, MSTL")
+    c2.metric("Phase 2", "Docker, MLflow", "tracked, versioned (DVC)")
+    c3.metric("Phase 3", "Airflow, API", "automated, secured, CI")
+    c4.metric("Phase 4", "Monitoring", "drift, live data, alerts")
 
 
 def data():
@@ -68,7 +107,26 @@ def architecture():
 
 def github_ci():
     header("Code, CI and data versioning", "Mina & Shari", 1, ["GitHub", "DagsHub"])
-    st.markdown("- Pull requests, protected main\n- CI: ruff, tests, Docker images\n- DVC on DagsHub")
+    left, right = st.columns(2)
+    with left:
+        st.markdown(
+            "**Code: GitHub**\n"
+            "- Every change is a **pull request**; `main` is protected: green CI + 1 approval\n"
+            "- We review each other's PRs (comments, fixes, reproductions)\n\n"
+            "**CI: GitHub Actions**, on every PR and push to `main`\n"
+            "- `test`: ruff + all unit tests on pinned versions\n"
+            "- `docker-build`: builds the api, trainer and airflow images"
+        )
+    with right:
+        st.markdown(
+            "**Data: DVC + DagsHub**\n"
+            "- Git keeps small *receipts* (`data/*.dvc`), the data itself is on DagsHub\n"
+            "- `dvc pull` gives everyone the same data; `dvc checkout` resets it\n"
+            "- Live data changes the processed file: never `dvc push` it by accident"
+        )
+        c1, c2 = st.columns(2)
+        c1.metric("Pull requests", "34")
+        c2.metric("Unit tests", "120")
 
 
 def model_mlflow():
@@ -134,6 +192,10 @@ def drift():
     c3.metric("Rolling recall", "1.0", "9 / 9 holidays")
     c4.metric("False alarms / week", "0.25", "no anomaly")
     st.success("The world changed (a colder period), the model did not break: alert a person, no retraining.")
+    reports = sorted(Path("models/drift/reports").glob("drift_*.html"))
+    if reports:
+        with st.expander(f"Evidently report: {reports[-1].stem.removeprefix('drift_')} (latest)"):
+            components.html(reports[-1].read_text(), height=900, scrolling=True)
     with st.expander("Speaker notes"):
         st.markdown("Open the Evidently report of 10 November: reference left, current right, consumption moved right. "
                     "The z-score threshold is also passed to Evidently, so the report agrees with the status file.")
