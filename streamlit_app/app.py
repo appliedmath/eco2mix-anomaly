@@ -42,7 +42,7 @@ health = api_or_stop("/health")
 newest = paris(health["newest_data"])
 st.caption(f"Model {health['model_version']} · newest data {newest:%d %b %Y, %H:%M} (Paris time)")
 
-(user_tab,) = st.tabs(["User"])
+user_tab, admin_tab = st.tabs(["User", "Admin"])
 
 with user_tab:
     # 1. Consumption with anomalies
@@ -122,3 +122,70 @@ with user_tab:
             "A half-hour is an anomaly when its residual is unusually large: |z| above K. "
             "A weekday public holiday looks like a Sunday, so the model flags it; we use holidays to check the model."
         )
+
+# Admin tab: start jobs through the API (with the key) and follow them
+API_KEY = os.environ.get("API_KEY", "")
+ERRORS = {
+    401: "the API key is missing",
+    403: "the API key is wrong",
+    409: "the DAG is paused in Airflow: switch it on first",
+    429: "too many requests, wait a minute (NGINX rate limit)",
+    500: "the API has no API key configured",
+    503: "Airflow is not reachable",
+}
+
+
+def start_job(path: str, **params) -> None:
+    try:
+        response = requests.post(f"{API_URL}{path}", params=params,
+                                 headers={"X-API-Key": API_KEY}, timeout=30)
+    except requests.RequestException as exc:
+        st.error(f"The API is not reachable: {exc}")
+        return
+    if response.status_code == 202:
+        st.session_state["job"] = response.json()
+        st.success(f"Started {st.session_state['job']['dag_id']}.")
+    else:
+        st.error(f"Not started ({response.status_code}): "
+                 f"{ERRORS.get(response.status_code, response.text[:200])}")
+
+
+with admin_tab:
+    st.subheader("Start a job")
+    st.caption("Jobs run in Airflow. The API starts them with the API key from the environment; "
+               "the key is never shown here.")
+    if not API_KEY:
+        st.warning("API_KEY is not set. Start the app with:\n\n"
+                   "`export API_KEY=$(grep ^API_KEY= .env | cut -d= -f2-)`")
+    else:
+        left, right = st.columns(2)
+        with left:
+            st.markdown("**Retrain**: a new model goes live only if it passes the promote-or-reject gate (MLflow).")
+            if st.button("Retrain the model", type="primary"):
+                start_job("/train")
+        with right:
+            st.markdown("**New data**: inject and score the next days (replay of held-out days).")
+            n_new = st.number_input("Days", min_value=1, max_value=31, value=1)
+            if st.button("Score new days"):
+                start_job("/predict", days=int(n_new))
+
+    job = st.session_state.get("job")
+    if job:
+        st.subheader("Last job")
+        st.button("Refresh status")
+        try:
+            response = requests.get(f"{API_URL}/runs/{job['dag_id']}/{job['run_id']}", timeout=15)
+            response.raise_for_status()
+            status = response.json()
+        except requests.RequestException as exc:
+            st.error(f"Could not read the run status: {exc}")
+            status = None
+        if status:
+            state = status.get("state", "unknown")
+            show = {"success": st.success, "failed": st.error}.get(state, st.info)
+            show(f"{job['dag_id']}: {state}")
+            tasks = status.get("tasks")
+            if tasks:
+                st.dataframe(pd.DataFrame(tasks), hide_index=True, use_container_width=True)
+            with st.expander("Answer of the API"):
+                st.json(status)
