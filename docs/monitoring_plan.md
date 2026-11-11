@@ -35,7 +35,7 @@ No GPU: the MSTL detector is statistical and runs on CPU.
 
 | Metric | Alert | Threshold | Severity | Action |
 |---|---|---|---|---|
-| `data_quality_failed` | `DataQualityFailed` (Grafana) | = 1 | warning | read `quality_problems` in latest.json; the batch is in `data/rejected/` and predict did not run; with `BATCH_SOURCE=live` the days are fetched again on the next run |
+| `data_quality_failed` | `DataQualityFailed` (Grafana) | = 1 | critical | read `quality_problems` in latest.json; the batch is in `data/rejected/` and predict did not run; with `BATCH_SOURCE=live` the days are fetched again on the next run |
 | `data_last_timestamp_seconds` | `NoNewData` (Prometheus) | newest half-hour did not move for 36 h (also catches rejected batches, works in replay) | warning | is `batch_dag` paused or failing? Docker running? RTE reachable? |
 | `batch_rows` | dashboard | 0 on 2 runs in a row (live) | info | RTE has not published a complete new day yet |
 
