@@ -347,6 +347,9 @@ def scaling():
     screenshot("k8s_pods.png", "kubectl: 3 pods, then self-healing after a delete")
     with st.expander("Speaker notes"):
         st.markdown(
+            "**Key sentence (with the screenshot):** We delete a pod and Kubernetes immediately starts a new one. "
+            "It shows 0/1 until the readiness probe on /health passes, so no request goes to a pod that "
+            "isn't ready. Then we scale to 5 with one command.\n\n"
             "Demo (optional, 30 s): `kubectl -n eco2mix get pods`, delete one pod, get pods again: "
             "a new pod is already starting. Scaling: `kubectl -n eco2mix scale deployment/eco2mix-api --replicas=5`. "
             "Why only the API: it is stateless and the part that grows with users; "
