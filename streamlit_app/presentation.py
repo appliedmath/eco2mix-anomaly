@@ -34,7 +34,7 @@ def screenshot(name: str, caption: str) -> None:
     """Backup screenshot (streamlit_app/assets/<name>), shown only if the file exists."""
     path = ASSETS / name
     if path.exists():
-        st.image(str(path), caption=caption, use_container_width=True)
+        st.image(str(path), caption=caption, width="stretch")
 
 
 def header(title: str, owner: str, minutes: int, tools=()) -> None:
@@ -43,7 +43,7 @@ def header(title: str, owner: str, minutes: int, tools=()) -> None:
     if tools:
         cols = st.columns(len(tools))
         for col, name in zip(cols, tools):
-            col.link_button(f"Open {name}", TOOLS[name], use_container_width=True)
+            col.link_button(f"Open {name}", TOOLS[name], width="stretch")
 
 
 def intro():
@@ -77,7 +77,7 @@ def intro():
         fig.update_layout(height=380, yaxis_title="MW", margin={"t": 50, "b": 10},
                           title="French national consumption, 5-11 November 2026 (scored by our model, read from our API)",
                           legend={"orientation": "h", "y": -0.15})
-        st.plotly_chart(fig, use_container_width=True)
+        st.plotly_chart(fig, width="stretch")
     except (requests.RequestException, KeyError, ValueError):
         st.info("Start the stack to see the live chart (docker compose up -d).")
     st.graphviz_chart(
@@ -356,34 +356,51 @@ def scaling():
 
 def future():
     header("Future work", "Mina & Shari", 2)
-    left, right = st.columns(2)
-    with left:
+    st.markdown("What we would do next, with the **benefit** and the **challenge** of each step.")
+    ds, ops = st.tabs(["With more time: data science", "With more time: MLOps"])
+    with ds:
         st.markdown(
-            "**With more time: data science**\n"
-            "- **Weather data** (temperature) next to the RTE forecast: does it really help? "
-            "Test it as a new run and let the gate decide; it would also explain input drift "
-            "like the +10 % of November 2026\n"
-            "- **More reference events** (cold snaps, strikes, outages) and **operator feedback** "
-            "on alerts → real labels, real recall\n"
-            "- **Other models** with external inputs, compared in MLflow with the same gate"
+            "| Idea | Benefit | Challenge |\n|---|---|---|\n"
+            "| **Weather data** (temperature) next to the RTE forecast | explains input drift such as the cold weeks of "
+            "2026; a closer expected line, fewer false alarms in cold or heat | does it really help? Test it as a new run "
+            "and let the gate decide; a reliable weather source; weather data can drift too |\n"
+            "| **Regional data + local context** (éCO2mix per region; weather per region, industry, tourism) | "
+            "shows *where* and *why* an anomaly happens (a local outage, a regional cold snap, a strike in an "
+            "industrial zone, a ski weekend in the mountains) that the national total hides | about 12 series: "
+            "12 models, runs and dashboards; regions are large and mixed; finer data (towns, villages) is coarser "
+            "in time and gets close to individual consumption, so privacy (GDPR) becomes a real constraint |\n"
+            "| **More reference events + operator feedback** | real labels → real recall; a better threshold K | needs the "
+            "operators' time and a feedback button; labels are partly subjective |\n"
+            "| **Other models** with external inputs | maybe better recall with fewer false alarms | less explainable than "
+            "MSTL; more compute; compared fairly through the same gate |"
         )
-    with right:
+    with ops:
         st.markdown(
-            "**With more time: MLOps**\n"
-            "- **CI/CD**: push **versioned images** to a registry, deploy by tag, rollback in one step\n"
-            "- **More alerts that notify** (Slack / e-mail): the maintainer knows without opening a dashboard\n"
-            "- **Automation**: rolling recall drops → alert → **retraining starts by itself** → the gate decides\n"
-            "- **Dev vs. prod**: bind mounts / Compose profiles for development, immutable multi-stage images "
-            "for production\n"
-            "- **Security**: login in front of Streamlit, Grafana, MLflow; one key per user, roles, HTTPS; "
-            "secrets in a vault instead of `.env`\n"
-            "- **Storage**: S3 / a database instead of shared folders"
+            "| Idea | Benefit | Challenge |\n|---|---|---|\n"
+            "| **Versioned images** pushed to a registry in CI | deploy by tag, rollback in one step; the DAG pins the "
+            "image tag (no DAG/image mismatch) | registry credentials in CI; tag discipline; storage |\n"
+            "| **Alerts that notify** (Slack / e-mail) | the maintainer knows without opening a dashboard | contact-point "
+            "secrets outside the repo; tuning against alert fatigue |\n"
+            "| **Automatic retraining** when rolling recall drops | faster reaction to a real change | never retrain on bad "
+            "data or a data bug: keep the gate and a human approval |\n"
+            "| **Dev vs. prod** (bind mounts, Compose profiles, multi-stage images) | fast development without rebuilds; "
+            "immutable images in production | two configurations to keep in sync |\n"
+            "| **Security for real users** (login, one key per user, roles, HTTPS, secrets vault) | safe access for many "
+            "users | a user database, certificates, more components to run |\n"
+            "| **Storage**: S3 / a database instead of shared folders | several machines, more data | migration, "
+            "credentials, cost |\n"
+            "| **Kubernetes for the whole stack** (when there are many users) | autoscaling, self-healing everywhere | "
+            "complexity and cost; Airflow and MLflow on Kubernetes |"
         )
     with st.expander("Speaker notes"):
         st.markdown(
             "Kilyan: the defense is about choices: what we built and why, what we would do with more time, "
-            "and what the project looks like in 5 years. Shari: data-science side (weather: an idea to test, "
-            "not a sure win). Mina: MLOps side. End with: a project is never finished, it is maintained."
+            "and what the project looks like in 5 years. Shari: data-science tab (weather: an idea to test, "
+            "not a sure win). Mina: MLOps tab. Pick 2 rows per tab, not all.\n\n"
+            "Regional data, if asked why not now: \"We first wanted the whole MLOps loop working on one series. "
+            "Going regional multiplies models, runs and dashboards by 12, so it's a scaling step we'd do next, "
+            "with dynamic task mapping in Airflow.\"\n\n"
+            "End with: a project is never finished, it is maintained."
         )
 
 
