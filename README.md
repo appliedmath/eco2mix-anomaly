@@ -224,8 +224,33 @@ docker compose run --rm trainer python -m src.models.train --k 2  # rejected: fa
 docker compose run --rm trainer python -m src.models.train --k 6  # rejected: lower recall
 ```
 
-The champion can be loaded from the registry:
-`mlflow.pyfunc.load_model("models:/grid-anomaly-detector@champion")`.
+### Where the model comes from: the MLflow Model Registry
+
+The jobs load the champion **from the registry by its alias**
+(`models:/grid-anomaly-detector@champion`), not from a file:
+
+- `predict` (batch_dag) scores new data with the registry's champion;
+- `train` compares the candidate with the registry's champion on the same data.
+
+Why: MLflow knows which model file belongs to which training run (nobody can
+quietly swap `models/model.joblib`), the jobs only need the MLflow URL (works
+when the services run on different machines), and every version stays
+available. **Rollback** = move the alias `champion` to an older version in the
+MLflow UI (Models → grid-anomaly-detector → version → Aliases); the next
+batch run uses it and updates the local copy in `models/`.
+
+`models/` keeps a copy of the champion: it is what the API serves, and the
+fallback when MLflow is not reachable (or `MLFLOW_TRACKING_URI` is not set,
+e.g. in the tests). `GET /champion` shows the registry's champion and whether
+the API's copy is the same version:
+
+```bash
+curl -s http://localhost:8000/champion; echo
+# {"registry":{"name":"grid-anomaly-detector","alias":"champion","version":"6","run_id":"..."},
+#  "in_use":{"model_version":"20261104-121941","registry_version":"6"},"in_sync":true}
+```
+
+In Python: `mlflow.pyfunc.load_model("models:/grid-anomaly-detector@champion")`.
 
 ### Retrain and reset
 
@@ -275,6 +300,7 @@ After a run, the API picks up the new files automatically (no restart).
 |---|---|
 | `GET /health` | status, `model_version`, `last_data` (end of training data), `newest_data` (newest measured half-hour) |
 | `GET /model-info` | training metadata and metrics |
+| `GET /champion` | the champion in the MLflow Model Registry (version, run) and whether the API shows that version (`in_sync`) |
 | `GET /anomaly-day?day=YYYY-MM-DD` | was there an anomaly on this Paris calendar day? Points, max \|z\|, peak time; optional `detector` |
 | `GET /anomalies?start=&end=` | flagged half-hours; optional `detector`, `only_anomalies` |
 | `GET /series?start=&end=` | consumption and RTE forecasts |
@@ -483,7 +509,7 @@ lock file (`statsforecast 2.0.3` requires `scipy < 1.16`); our own code uses
 | Path | Content |
 |---|---|
 | `src/data/` | `collect.py` (download), `process.py` (30-min grid, flags, validation), `batches.py` (80/20 split, batches, live RTE data, quality check), `drift.py` (seasonal drift with Evidently) |
-| `src/models/` | `detect.py` (MSTL), `train.py`, `promote.py` (promote or reject), `compare.py` (detectors × K in MLflow), `predict.py` (batch scoring), `tracking.py` (MLflow runs + registry), `pyfunc_model.py` (model for the registry), `events.py` (reference events), `anomaly_days.py`, `model.py` |
+| `src/models/` | `detect.py` (MSTL), `train.py`, `promote.py` (promote or reject), `compare.py` (detectors × K in MLflow), `predict.py` (batch scoring), `registry.py` (load @champion from the registry), `tracking.py` (MLflow runs + registry), `pyfunc_model.py` (model for the registry), `events.py` (reference events), `anomaly_days.py`, `model.py` |
 | `src/api/` | FastAPI service |
 | `scripts/` | `split_holdout.py`, `inject_batch.py`, `validate_batch.py`, `drift_batch.py`, `inspect_alarms.py`, `check_clock_change.py` (clock-change day on fresh RTE data) |
 | `dags/` | Airflow DAGs (`batch_dag`, `retrain_dag`) and their shared settings |

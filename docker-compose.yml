@@ -92,6 +92,10 @@ services:
       context: .
       dockerfile: docker/trainer.Dockerfile
     command: ["sh", "batch.sh"]
+    environment:
+      - MLFLOW_TRACKING_URI=http://mlflow:5000   # predict loads @champion
+      - MLFLOW_DISABLE_TELEMETRY=true
+      - GIT_PYTHON_REFRESH=quiet
     volumes:
       - ./data:/app/data
       - ./models:/app/models
@@ -103,6 +107,8 @@ services:
     environment:
       - MODEL_DIR=/app/models
       - DATA_PATH=/app/data/processed/consumption_30min.parquet
+      # GET /champion asks the MLflow Model Registry for @champion
+      - MLFLOW_TRACKING_URI=http://mlflow:5000
       # POST /train and /predict start Airflow DAG runs through its REST API
       - AIRFLOW_URL=http://airflow-webserver:8080
       - AIRFLOW_USER=${AIRFLOW_ADMIN_USER:-admin}

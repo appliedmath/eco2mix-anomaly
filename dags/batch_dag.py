@@ -25,7 +25,8 @@ with DAG(
    duplicates, gaps, missing or out-of-range values, too many filled values).
    A problem fails the task, so predict does not run; the result is written
    to `models/drift/latest.json`.
-3. **predict** scores only the new half-hours with the saved champion model
+3. **predict** loads the champion from the MLflow registry (`@champion`,
+   files in `models/` as fallback), scores only the new half-hours
    and updates `models/detections.parquet` and `models/anomaly_days.csv`.
    The API shows the result without a restart.
 4. **drift** compares the new days with the same weeks of earlier years

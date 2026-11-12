@@ -26,7 +26,7 @@ def test_no_import_errors(dagbag):
 def test_batch_dag_injects_then_predicts(dagbag):
     dag = dagbag.dags["batch_dag"]
     assert not dag.catchup
-    assert dag.get_task("inject_batch").downstream_task_ids == {"predict"}
+    assert dag.get_task("inject_batch").downstream_task_ids == {"validate"}
 
 
 def test_tasks_use_trainer_image_host_mounts_and_one_slot_pool(dagbag):
@@ -37,3 +37,9 @@ def test_tasks_use_trainer_image_host_mounts_and_one_slot_pool(dagbag):
             assert {m["Target"] for m in task.mounts} == {"/app/data", "/app/models"}
             assert all(m["Source"].startswith("/host/eco2mix-anomaly")
                        for m in task.mounts)
+
+
+def test_every_task_knows_mlflow(dagbag):
+    for dag_id in ("batch_dag", "retrain_dag"):
+        for task in dagbag.dags[dag_id].tasks:
+            assert task.environment["MLFLOW_TRACKING_URI"].startswith("http")

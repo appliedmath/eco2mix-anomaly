@@ -1,7 +1,8 @@
 """Promote or reject: a new training run replaces the model in use only if
 it is not worse.
 
-The model in use (the "champion") lives in models/. A new run (the
+The model in use (the "champion") is loaded from the MLflow Model Registry
+(alias @champion), with the files in models/ as fallback. A new run (the
 "candidate") is first written to models/candidate/. Both are scored on the
 SAME data with the main detector (mstl). The candidate is promoted when
 
@@ -14,7 +15,7 @@ Registry with the alias "champion".
 """
 import os
 
-from src.models.model import load_model
+from src.models.registry import load_champion_model
 
 MAIN_DETECTOR = "mstl"
 MAX_FA_INCREASE = 0.10
@@ -44,11 +45,16 @@ def decide(candidate: dict, champion: dict | None,
 
 
 def load_champion(folder: str = MODEL_DIR):
-    """(model, meta) of the model in use, or None if there is none yet."""
-    needed = [os.path.join(folder, n) for n in ("model.joblib", "metadata.json")]
-    if not all(os.path.exists(p) for p in needed):
+    """(model, meta) of the model in use, or None if there is none yet.
+
+    Registry first (the version with @champion), files as fallback, so the
+    candidate is always compared with the real champion on the same data."""
+    try:
+        model, meta, source = load_champion_model(folder)
+    except FileNotFoundError:
         return None
-    return load_model(folder)
+    print(f"Champion {meta['model_version']} loaded from {source}")
+    return model, meta
 
 
 def promote_files(candidate_dir: str = CANDIDATE_DIR,
