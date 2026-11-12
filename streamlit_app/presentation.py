@@ -27,6 +27,16 @@ TOOLS = {
 }
 
 
+ASSETS = Path(__file__).parent / "assets"
+
+
+def screenshot(name: str, caption: str) -> None:
+    """Backup screenshot (streamlit_app/assets/<name>), shown only if the file exists."""
+    path = ASSETS / name
+    if path.exists():
+        st.image(str(path), caption=caption, use_container_width=True)
+
+
 def header(title: str, owner: str, minutes: int, tools=()) -> None:
     st.title(title)
     st.caption(f"{owner} · {minutes} min")
@@ -101,8 +111,65 @@ def data():
 
 
 def architecture():
-    header("Architecture", "Mina", 2)
-    st.markdown("- Diagram (Mina)")
+    header("Architecture", "Mina", 2, ["GitHub"])
+    st.graphviz_chart(r"""
+digraph {
+  rankdir=LR; nodesep=0.35; ranksep=0.6;
+  node [shape=box, style="rounded,filled", fillcolor="#f5f7fa", fontname=Helvetica, fontsize=15, margin="0.15,0.08"];
+  edge [fontname=Helvetica, fontsize=12, color="#555555"];
+
+  user  [label="Operator\n(browser)", shape=oval, fillcolor="#ffffff"];
+  nginx [label="NGINX\nentry point\nkey · rate limit", fillcolor="#e3f2fd"];
+  app   [label="Streamlit\noperator app", fillcolor="#e3f2fd"];
+  api   [label="FastAPI", fillcolor="#e3f2fd"];
+  airflow [label="Airflow\nbatch_dag · retrain_dag", fillcolor="#e8f5e9"];
+  trainer [label="trainer container\ninject · validate · predict\ndrift · train", fillcolor="#e8f5e9"];
+  rte   [label="RTE éCO2mix\nlive data", shape=oval, fillcolor="#ffffff"];
+  mlflow  [label="MLflow\nregistry @champion", fillcolor="#e8f5e9"];
+  files [label="data/ · models/\nlatest.json", shape=cylinder, fillcolor="#fffde7"];
+  prom    [label="Prometheus\n2 system alerts", fillcolor="#fff3e0"];
+  grafana [label="Grafana\n4 dashboards · 7 ML alerts", fillcolor="#fff3e0"];
+
+  user -> nginx -> app -> api;
+  nginx -> api;
+  api -> airflow [label="/train /predict"];
+  airflow -> trainer [label="DockerOperator"];
+  rte -> trainer;
+  trainer -> mlflow [label="runs · gate"];
+  trainer -> files;
+  files -> api [label="reads", style=dashed];
+  mlflow -> api [label="champion", style=dashed];
+  prom -> api [label="scrapes /metrics", style=dashed, dir=back];
+  api -> prom [style=invis];
+  prom -> grafana;
+  { rank=same; app; api; }
+}
+""", use_container_width=True)
+    st.caption("NGINX also publishes MLflow (:5000), Airflow (:8080) and Grafana (:3000); "
+               "Prometheus only on 127.0.0.1. Data versions: DVC → DagsHub.")
+    c1, c2, c3, c4 = st.columns(4)
+    c1.metric("Services", "13", "one docker compose")
+    c2.metric("Published ports", "only NGINX", "Prometheus: 127.0.0.1")
+    c3.metric("Own images", "3", "api, trainer, airflow: built in CI")
+    c4.metric("Config as code", "in git", "DAGs, alerts, dashboards")
+    st.markdown(
+        "**Design choices**\n"
+        "- **One trainer image** for every job: Airflow starts it per task (DockerOperator), "
+        "so training, scoring and drift use the same pinned code\n"
+        "- **The API never trains**: it reads the champion and the results, and starts jobs in Airflow\n"
+        "- **Everything goes through NGINX**: one place for the API key, rate limits and ports\n"
+        "- **Monitoring is code too**: Prometheus rules, Grafana data source, dashboards and alerts "
+        "are files in the repo, reviewed in pull requests"
+    )
+    with st.expander("Speaker notes"):
+        st.markdown(
+            "Follow one night from left to right: RTE → Airflow starts the trainer container → "
+            "inject, validate, predict, drift → results in data/ and models/ → the API serves them → "
+            "Prometheus scrapes the API → Grafana shows it and raises alerts. "
+            "Training: same trainer image, logs to MLflow; the gate decides if the new model "
+            "becomes @champion. Kept simple on purpose: one machine, Docker Compose; "
+            "Kubernetes only for the serving layer (page 11)."
+        )
 
 
 def github_ci():
@@ -152,7 +219,36 @@ def model_mlflow():
 
 def api():
     header("API and NGINX", "Mina", 2, ["API docs"])
-    st.markdown("- Endpoints\n- API key, rate limit\n- Single entry point")
+    left, right = st.columns(2)
+    with left:
+        st.markdown(
+            "**FastAPI endpoints** (Swagger at `/docs`)\n\n"
+            "| Endpoint | Use |\n|---|---|\n"
+            "| `GET /health` | model version, newest data |\n"
+            "| `GET /model-info` | K, recall, false alarms of the champion |\n"
+            "| `GET /anomalies`, `/series` | scored half-hours for a period |\n"
+            "| `GET /anomaly-day` | was this day an anomaly? |\n"
+            "| `POST /train` 🔑 | start `retrain_dag` in Airflow |\n"
+            "| `POST /predict` 🔑 | score new days (`batch_dag`) |\n"
+            "| `GET /runs/{dag}/{run}` | status of a started run |\n"
+        )
+    with right:
+        st.markdown(
+            "**Security and robustness**\n"
+            "- 🔑 **API key** (`X-API-Key`) on the endpoints that start jobs: "
+            "401 missing, 403 wrong (constant-time compare)\n"
+            "- **NGINX rate limit** on `/train` and `/predict`: 6 per minute → **429**\n"
+            "- Clear answers instead of crashes: **409** DAG paused, **503** Airflow down\n"
+            "- `/metrics` only inside Docker: NGINX answers **403** from outside\n"
+            "- Jobs return **202 + run id**: the API never waits for a training\n"
+            "- Secrets only in `.env` (git-ignored); `.env.example` in the repo"
+        )
+    with st.expander("Speaker notes"):
+        st.markdown(
+            "In Swagger: GET /anomaly-day for 11 November 2026 (Armistice Day) → anomaly. "
+            "Then POST /train without the key → 401: the key protects everything that changes the system. "
+            "Don't show the key on screen. The API is the only door for the operator app too."
+        )
 
 
 def airflow():
@@ -203,7 +299,44 @@ def drift():
 
 def monitoring():
     header("Monitoring: Prometheus and Grafana", "Mina", 3, ["Grafana", "Prometheus"])
-    st.markdown("- Dashboards\n- 9 alerts\n- NoNewData story")
+    st.markdown(
+        "**FastAPI `/metrics` → Prometheus (every 15 s) → Grafana.** "
+        "The API exports request metrics *and* the ML state (champion, data age, last batch, drift, "
+        "rolling recall), read from the files at each scrape."
+    )
+    c1, c2, c3, c4 = st.columns(4)
+    c1.metric("0 · Stack health", "one glance", "targets, champion, data age")
+    c2.metric("1 · API performance", "RED", "rate, errors, P95 vs 200 ms")
+    c3.metric("2 · Model & data", "ML", "quality, drift, KPI")
+    c4.metric("3 · Infrastructure", "host", "CPU, RAM, disk")
+    st.markdown("**9 alerts, the same names as the monitoring plan**")
+    st.markdown(
+        "| Alert | Where | Fires when |\n|---|---|---|\n"
+        "| ApiDown | Prometheus | no API container answers for 1 min |\n"
+        "| NoNewData | Prometheus | the newest half-hour did not move for 36 h |\n"
+        "| DataQualityFailed | Grafana | the last batch failed validation |\n"
+        "| InputDrift · PredictionDrift | Grafana | inputs drift · z-score drift > 0.2 |\n"
+        "| ModelRecallLow · FalseAlarmsHigh | Grafana | rolling recall < 0.7 · > 1 false alarm / week |\n"
+        "| AlertLoadHigh | Grafana | more than 3 alert days in 7 (alert fatigue) |\n"
+        "| NewChampion | Grafana | a new model went live |"
+    )
+    st.info(
+        "**Real story, 10 November:** NoNewData was firing and the data age was red (6.5 days). "
+        "Cause: batch_dag was paused. Switched on → one day replayed → age green, alert cleared by itself. "
+        "After Shari's review the rule checks the newest *measured* half-hour, so rejected batches are caught too."
+    )
+    screenshot("grafana_alerts.png", "Grafana: the 9 alert rules, provisioned from files")
+    screenshot("grafana_model_data.png", "Grafana: model & data dashboard")
+    with st.expander("Speaker notes"):
+        st.markdown(
+            "Keep traffic running in a terminal before this page "
+            "(`while true; do curl -s localhost:8000/health >/dev/null; sleep 2; done`). "
+            "Open Grafana: Stack health → API performance → Model & data (drift in orange = alert only) → "
+            "Alerting → Alert rules (9 rules, 'Provisioned'). "
+            "Show InputDrift / PredictionDrift firing from the live week, and NewChampion after Shari's retrain on page 10. "
+            "If asked about notifications: no SMTP/Slack on purpose (no secrets in the repo); "
+            "in production a contact point."
+        )
 
 
 def live_demo():
@@ -222,7 +355,31 @@ def live_demo():
 
 def scaling():
     header("Scaling and Kubernetes", "Mina", 1)
-    st.markdown("- --scale api=3\n- Kubernetes (Mina)")
+    left, right = st.columns(2)
+    with left:
+        st.markdown(
+            "**Docker Compose**\n"
+            "```\ndocker compose up -d --scale api=3\n```\n"
+            "- NGINX spreads requests over the 3 API containers (Docker DNS)\n"
+            "- Prometheus scrapes **each** container; Grafana shows *API containers up = 3*"
+        )
+    with right:
+        st.markdown(
+            "**Kubernetes** (Docker Desktop, serving layer only)\n"
+            "- **Deployment**: 3 replicas, rolling update without downtime\n"
+            "- **Readiness + liveness** probes on `/health`; CPU / RAM limits\n"
+            "- **Service** (port 8001), **ConfigMap**, **Secret** created from `.env`\n"
+            "- **Self-healing**: delete a pod → a new one starts at once\n"
+            "- Training, Airflow, MLflow stay in Compose (one machine is enough)"
+        )
+    screenshot("k8s_pods.png", "kubectl: 3 pods, then self-healing after a delete")
+    with st.expander("Speaker notes"):
+        st.markdown(
+            "Demo (optional, 30 s): `kubectl -n eco2mix get pods`, delete one pod, get pods again: "
+            "a new pod is already starting. Scaling: `kubectl -n eco2mix scale deployment/eco2mix-api --replicas=5`. "
+            "Why only the API: it is stateless and the part that grows with users; "
+            "the jobs run once a night."
+        )
 
 
 def future():
@@ -230,7 +387,12 @@ def future():
     st.markdown(
         "- **Temperature** as an input: explains input drift, and a more precise expected consumption\n"
         "- **More reference events** (cold snaps, strikes, outages) and operator feedback on alerts\n"
-        "- **MLOps** (Mina)"
+        "- **MLOps**: versioned images pushed to a registry in CI (deploy by tag, rollback in one step)\n"
+        "- **Notifications**: Grafana contact point (Slack / e-mail) instead of watching dashboards\n"
+        "- **Automation with a human in the loop**: recall drops → alert → retraining proposed, the gate decides\n"
+        "- **Kubernetes for the whole stack** (Helm), managed database and S3 storage instead of shared folders\n"
+        "- **Security for real users**: login in front of Streamlit and Grafana, one key per user, HTTPS\n"
+        "- **Dev vs prod**: bind mounts for the code in development, immutable images in production"
     )
 
 
