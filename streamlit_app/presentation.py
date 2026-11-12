@@ -112,41 +112,10 @@ def data():
 
 def architecture():
     header("Architecture", "Mina", 2, ["GitHub"])
-    st.graphviz_chart(r"""
-digraph {
-  rankdir=LR; nodesep=0.35; ranksep=0.6;
-  node [shape=box, style="rounded,filled", fillcolor="#f5f7fa", fontname=Helvetica, fontsize=15, margin="0.15,0.08"];
-  edge [fontname=Helvetica, fontsize=12, color="#555555"];
-
-  user  [label="Operator\n(browser)", shape=oval, fillcolor="#ffffff"];
-  nginx [label="NGINX\nentry point\nkey · rate limit", fillcolor="#e3f2fd"];
-  app   [label="Streamlit\noperator app", fillcolor="#e3f2fd"];
-  api   [label="FastAPI", fillcolor="#e3f2fd"];
-  airflow [label="Airflow\nbatch_dag · retrain_dag", fillcolor="#e8f5e9"];
-  trainer [label="trainer container\ninject · validate · predict\ndrift · train", fillcolor="#e8f5e9"];
-  rte   [label="RTE éCO2mix\nlive data", shape=oval, fillcolor="#ffffff"];
-  mlflow  [label="MLflow\nregistry @champion", fillcolor="#e8f5e9"];
-  files [label="data/ · models/\nlatest.json", shape=cylinder, fillcolor="#fffde7"];
-  prom    [label="Prometheus\n2 system alerts", fillcolor="#fff3e0"];
-  grafana [label="Grafana\n4 dashboards · 7 ML alerts", fillcolor="#fff3e0"];
-
-  user -> nginx -> app -> api;
-  nginx -> api;
-  api -> airflow [label="/train /predict"];
-  airflow -> trainer [label="DockerOperator"];
-  rte -> trainer;
-  trainer -> mlflow [label="runs · gate"];
-  trainer -> files;
-  files -> api [label="reads", style=dashed];
-  mlflow -> api [label="champion", style=dashed];
-  prom -> api [label="scrapes /metrics", style=dashed, dir=back];
-  api -> prom [style=invis];
-  prom -> grafana;
-  { rank=same; app; api; }
-}
-""", use_container_width=True)
+    # rendered from streamlit_app/assets/architecture.dot (command inside the file)
+    st.image(str(ASSETS / "architecture.png"), use_container_width=True)
     st.caption("NGINX also publishes MLflow (:5000), Airflow (:8080) and Grafana (:3000); "
-               "Prometheus only on 127.0.0.1. Data versions: DVC → DagsHub.")
+               "Prometheus only on 127.0.0.1.")
     c1, c2, c3, c4 = st.columns(4)
     c1.metric("Services", "13", "one docker compose")
     c2.metric("Published ports", "only NGINX", "Prometheus: 127.0.0.1")
