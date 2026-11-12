@@ -158,7 +158,7 @@ class StateCollector:
         for key, doc in (
                 ("input_drift_share", "Share of drifted input columns (consumption, RTE forecast)"),
                 ("prediction_drift_score", "Drift score of the model's z-score"),
-                ("model_recall_rolling", "Share of the public holidays of the last 90 days flagged"),
+                ("model_recall_rolling", "Share of the weekday public holidays of the last 365 days flagged"),
                 ("false_alarms_per_week_rolling",
                  "Alert days per week that are not holidays (upper bound)")):
             yield _gauge(key, doc, status.get(key))
