@@ -48,7 +48,7 @@ def header(title: str, owner: str, minutes: int, tools=()) -> None:
 
 def intro():
     st.title("Anomaly detection on the French electricity grid")
-    st.markdown("#### ⚡️ Fatemeh Tayebi & Mina Nadaf")
+    st.markdown("#### ⚡️ Fatemeh (Shari) Tayebi & Mahboubeh (Mina) Nadaf")
     st.markdown("Mentor: Kilyan Poilly · MLOps, November 2026")
     st.caption("Mina & Shari · 2 min")
     st.markdown(
