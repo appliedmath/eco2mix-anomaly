@@ -113,7 +113,7 @@ def data():
 def architecture():
     header("Architecture", "Mina", 2, ["GitHub"])
     # rendered from streamlit_app/assets/architecture.dot (command inside the file)
-    st.image(str(ASSETS / "architecture.png"), use_container_width=True)
+    st.image(str(ASSETS / "architecture.png"), width=900)
     st.caption("NGINX also publishes MLflow (:5000), Airflow (:8080) and Grafana (:3000); "
                "Prometheus only on 127.0.0.1.")
     c1, c2, c3, c4 = st.columns(4)
