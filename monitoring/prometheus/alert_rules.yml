@@ -13,12 +13,21 @@ groups:
           description: "Prometheus could not scrape any API container for 1 minute."
 
       - alert: NoNewData
-        # the processed data file was not updated for 36 h: the daily
-        # batch_dag did not add data (paused, failing, or no new data at RTE)
-        expr: time() - data_updated_timestamp_seconds > 36 * 3600
+        # No new data for 36 h. Two cases:
+        # 1) the processed file was not touched at all (batch_dag paused or failing)
+        # 2) the file was rewritten but the newest half-hour did not move
+        #    (e.g. validate rejected several batches in a row). The second part
+        #    needs 36 h of Prometheus history, so it stays quiet after a restart.
+        # The newest half-hour moves with every new day in live AND replay mode,
+        # so this also works for the demo (replay data is from January).
+        expr: |
+          (time() - data_updated_timestamp_seconds > 36 * 3600)
+          or
+          (changes(data_last_timestamp_seconds[36h]) == 0
+           and count_over_time(data_last_timestamp_seconds[36h]) > 8000)
         for: 10m
         labels:
           severity: warning
         annotations:
           summary: "No new data for more than 36 hours"
-          description: "The processed data was last updated {{ $value | humanizeDuration }} ago. Check batch_dag in Airflow."
+          description: "No new half-hour was added in the last 36 hours (batch_dag paused or failing, no new day at RTE, or batches rejected by validate). Check batch_dag in Airflow and data/rejected/."
