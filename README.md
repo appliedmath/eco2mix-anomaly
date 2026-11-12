@@ -18,7 +18,7 @@ that serves the results.
 
 **Documentation:** [Architecture](docs/architecture.md) (services, who calls
 whom, flows, design decisions) · [CI/CD strategy](docs/cicd_strategy.md)
-(what happens when code, data or the model change) · [Monitoring plan](docs/monitoring_plan.md) (metrics, thresholds, alerts, actions) · [Ethics and security](docs/ethics_security.md).
+(what happens when code, data or the model change) · [Monitoring plan](docs/monitoring_plan.md) (metrics, thresholds, alerts, actions) · [Ethics and security](docs/ethics_security.md) · [Maintenance](docs/maintenance.md) (start, update, retrain, roll back, rotate secrets, lessons learned).
 
 ## Architecture
 
@@ -490,7 +490,7 @@ lock file (`statsforecast 2.0.3` requires `scipy < 1.16`); our own code uses
 | `docker/` | Dockerfiles (trainer, api, airflow), per-service requirements, job scripts, `nginx/default.conf` |
 | `monitoring/` | Prometheus configuration and alert rules, Grafana data source, dashboards and alerts (as code) |
 | `config/` | reference events added by hand |
-| `docs/` | `architecture.md`, `cicd_strategy.md`, `monitoring_plan.md`, `ethics_security.md` |
+| `docs/` | `architecture.md`, `cicd_strategy.md`, `monitoring_plan.md`, `ethics_security.md`, `maintenance.md` |
 | `data/*.dvc` | DVC receipts (the data itself is in DVC storage) |
 | `notebooks/` | data exploration |
 | `tests/` | unit tests |
