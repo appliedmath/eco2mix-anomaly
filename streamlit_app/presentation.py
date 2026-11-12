@@ -298,6 +298,9 @@ def monitoring():
     screenshot("grafana_model_data.png", "Grafana: model & data dashboard")
     with st.expander("Speaker notes"):
         st.markdown(
+            "**Key sentence:** Mid-January 2026: input and prediction drift fire, but rolling recall is still 100 % "
+            "and our model raised 0 alert days, against 5 for the naive baseline. The world changed, "
+            "the model is fine, so we alert and don't retrain.\n\n"
             "Keep traffic running in a terminal before this page "
             "(`while true; do curl -s localhost:8000/health >/dev/null; sleep 2; done`). "
             "Open Grafana: Stack health → API performance → Model & data (drift in orange = alert only) → "
