@@ -48,7 +48,7 @@ def header(title: str, owner: str, minutes: int, tools=()) -> None:
 
 def intro():
     st.title("Anomaly detection on the French electricity grid")
-    st.markdown("#### ⚡️ Fatemeh (Shari) Tayebi & Mahboubeh (Mina) Nadaf")
+    st.markdown("#### Fatemeh (Shari) Tayebi & Mahboubeh (Mina) Nadaf")
     st.markdown("Mentor: Kilyan Poilly · MLOps, November 2026")
     st.caption("Mina & Shari · 2 min")
     st.markdown(
@@ -383,17 +383,36 @@ def scaling():
 
 
 def future():
-    header("Future work", "Mina & Shari", 1)
-    st.markdown(
-        "- **Temperature** as an input: explains input drift, and a more precise expected consumption\n"
-        "- **More reference events** (cold snaps, strikes, outages) and operator feedback on alerts\n"
-        "- **MLOps**: versioned images pushed to a registry in CI (deploy by tag, rollback in one step)\n"
-        "- **Notifications**: Grafana contact point (Slack / e-mail) instead of watching dashboards\n"
-        "- **Automation with a human in the loop**: recall drops → alert → retraining proposed, the gate decides\n"
-        "- **Kubernetes for the whole stack** (Helm), managed database and S3 storage instead of shared folders\n"
-        "- **Security for real users**: login in front of Streamlit and Grafana, one key per user, HTTPS\n"
-        "- **Dev vs prod**: bind mounts for the code in development, immutable images in production"
-    )
+    header("Future work", "Mina & Shari", 2)
+    left, right = st.columns(2)
+    with left:
+        st.markdown(
+            "**With more time: data science**\n"
+            "- **Weather data** (temperature) next to the RTE forecast: does it really help? "
+            "Test it as a new run and let the gate decide; it would also explain input drift "
+            "like the +10 % of November 2026\n"
+            "- **More reference events** (cold snaps, strikes, outages) and **operator feedback** "
+            "on alerts → real labels, real recall\n"
+            "- **Other models** with external inputs, compared in MLflow with the same gate"
+        )
+    with right:
+        st.markdown(
+            "**With more time: MLOps**\n"
+            "- **CI/CD**: push **versioned images** to a registry, deploy by tag, rollback in one step\n"
+            "- **More alerts that notify** (Slack / e-mail): the maintainer knows without opening a dashboard\n"
+            "- **Automation**: rolling recall drops → alert → **retraining starts by itself** → the gate decides\n"
+            "- **Dev vs. prod**: bind mounts / Compose profiles for development, immutable multi-stage images "
+            "for production\n"
+            "- **Security**: login in front of Streamlit, Grafana, MLflow; one key per user, roles, HTTPS; "
+            "secrets in a vault instead of `.env`\n"
+            "- **Storage**: S3 / a database instead of shared folders"
+        )
+    with st.expander("Speaker notes"):
+        st.markdown(
+            "Kilyan: the defense is about choices: what we built and why, what we would do with more time, "
+            "and what the project looks like in 5 years. Shari: data-science side (weather: an idea to test, "
+            "not a sure win). Mina: MLOps side. End with: a project is never finished, it is maintained."
+        )
 
 
 pages = [st.Page(f, title=t, url_path=f.__name__) for f, t in [
