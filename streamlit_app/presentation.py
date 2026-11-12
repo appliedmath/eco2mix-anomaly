@@ -49,7 +49,7 @@ def intro():
     )
     try:
         rows = requests.get(f"{API_URL}/anomalies", timeout=15, params={
-            "start": "2026-07-11", "end": "2026-07-17", "detector": "mstl", "only_anomalies": "false"}).json()
+            "start": "2026-11-05", "end": "2026-11-11", "detector": "mstl", "only_anomalies": "false"}).json()
         week = pd.DataFrame(rows)
         week["time"] = pd.to_datetime(week["timestamp_utc"], utc=True).dt.tz_convert("Europe/Paris")
         flagged = week[week["is_anomaly"]]
@@ -61,11 +61,11 @@ def intro():
                         marker={"color": "red", "size": 8})
         peak = flagged.loc[flagged["consumption_mw"].idxmax()]
         fig.add_annotation(x=peak["time"], y=peak["consumption_mw"],
-                           text="14 July: public holiday on a Tuesday,<br>consumption like a Sunday",
+                           text="11 November: Armistice Day, a holiday on a Wednesday,<br>flagged by the nightly run",
                            showarrow=True, arrowhead=2, ax=-150, ay=-45,
                            bgcolor="white", bordercolor="red", borderpad=4)
         fig.update_layout(height=380, yaxis_title="MW", margin={"t": 50, "b": 10},
-                          title="French national consumption, 11-17 July 2026 (live from our API)",
+                          title="French national consumption, 5-11 November 2026 (scored by our model, read from our API)",
                           legend={"orientation": "h", "y": -0.15})
         st.plotly_chart(fig, use_container_width=True)
     except (requests.RequestException, KeyError, ValueError):
