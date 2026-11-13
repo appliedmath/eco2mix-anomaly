@@ -124,9 +124,6 @@ def github_ci():
             "- `dvc pull` gives everyone the same data; `dvc checkout` resets it\n"
             "- Live data changes the processed file: never `dvc push` it by accident"
         )
-        c1, c2 = st.columns(2)
-        c1.metric("Pull requests", "34")
-        c2.metric("Unit tests", "120")
 
 
 def model_mlflow():
