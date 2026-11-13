@@ -15,6 +15,7 @@ from src.api.airflow_client import (
     client_from_env,
 )
 from src.api.metrics import REGISTRY, StateCollector, observe, status_path_from_env
+from src.api.registry_client import RegistryError, champion_version, tracking_url
 from src.api.security import require_api_key
 from src.models.anomaly_days import paris_day_bounds, summarize_days
 from src.models.model import load_model
@@ -123,6 +124,39 @@ def metrics():
 @app.get("/model-info")
 def model_info(meta=Depends(get_meta)):
     return meta
+
+
+# ---------- Where the model comes from: MLflow Model Registry ----------
+
+def get_registry():
+    """Function that returns the champion entry of the registry (replaced in tests)."""
+    url = tracking_url()
+    if url is None:
+        raise HTTPException(status_code=503,
+                            detail="MLFLOW_TRACKING_URI is not set")
+    return lambda: champion_version(url)
+
+
+@app.get("/champion")
+def champion(meta=Depends(get_meta), registry=Depends(get_registry)):
+    """The champion in the MLflow Model Registry, and the version this API shows.
+
+    The batch job loads the model from the registry (alias @champion) and
+    keeps a copy in models/; in_sync tells whether that copy is the same
+    version as the registry's champion.
+    """
+    try:
+        entry = registry()
+    except RegistryError as err:
+        code = 404 if err.status == 404 else 503
+        raise HTTPException(status_code=code, detail=err.message) from err
+    in_use = meta.get("registry_version")
+    return {
+        "registry": entry,
+        "in_use": {"model_version": meta["model_version"],
+                   "registry_version": in_use},
+        "in_sync": in_use == entry["version"],
+    }
 
 
 @app.get("/anomalies")
