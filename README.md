@@ -20,6 +20,10 @@ that serves the results.
 whom, flows, design decisions) · [CI/CD strategy](docs/cicd_strategy.md)
 (what happens when code, data or the model change) · [Monitoring plan](docs/monitoring_plan.md) (metrics, thresholds, alerts, actions) · [Ethics and security](docs/ethics_security.md) · [Maintenance](docs/maintenance.md) (start, update, retrain, roll back, rotate secrets, lessons learned).
 
+**Shortcuts:** `make help` lists short commands (`make up`, `make test`,
+`make check`, `make presentation`, `make k8s`, …); each one is a normal
+command from this README.
+
 ## Architecture
 
 ```mermaid
