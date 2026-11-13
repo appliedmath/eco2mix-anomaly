@@ -185,6 +185,7 @@ def airflow():
 def drift():
     header("Data quality and drift", "Shari", 2)
     st.markdown(
+        "- **Data quality**: gaps, duplicated hours or impossible values: the batch is rejected (moved to `data/rejected/`), the model never sees it\n"
         "- **Window**: the last 7 days vs. the **same weeks ± 2 weeks of 2023-2025** "
         "(a winter week is compared with earlier winters; a Sunday is not drift)\n"
         "- **Input drift**: consumption and RTE forecast (Evidently, Wasserstein)\n"
