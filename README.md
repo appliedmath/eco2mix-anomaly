@@ -450,6 +450,54 @@ docker compose up -d --force-recreate nginx  # nginx gets the ports 3000 and 909
 curl -s localhost:9090/api/v1/targets | python3 -c "import json,sys; [print(t['labels']['job'], t['health']) for t in json.load(sys.stdin)['data']['activeTargets']]"
 ```
 
+## Scaling: several API containers, Docker Compose and Kubernetes
+
+The API is **stateless** (it reads the champion's results and the data, it never
+trains), so it can run as several identical copies.
+
+**Docker Compose** — three API containers behind NGINX:
+```bash
+docker compose up -d --scale api=3
+docker compose ps api                     # api-1, api-2, api-3
+```
+NGINX resolves `api` through Docker's DNS on every request and spreads the
+requests over the three containers; Prometheus finds all three (DNS discovery):
+Grafana → "1 · API performance" → *API containers up* = 3. Back to one:
+`docker compose up -d --scale api=1`.
+
+**Kubernetes** (Docker Desktop: Settings → Kubernetes → Enable, type *kubeadm*)
+— the serving layer as a Deployment, as in the Kubernetes course:
+
+```
+k8s/namespace.yml        namespace eco2mix
+k8s/configmap.yml        settings (paths, Airflow URL)
+k8s/secret.example.yml   template only; the real Secret is created from .env
+k8s/deployment.yml       3 replicas, readiness + liveness on /health, CPU/RAM limits,
+                         rolling update without downtime (maxUnavailable 0)
+k8s/service.yml          one address for the 3 pods: http://localhost:8001
+k8s/ingress.example.yml  optional (needs an ingress controller)
+k8s/deploy.sh            build the image, create the Secret from .env, apply, wait
+```
+
+```bash
+bash k8s/deploy.sh                          # build + deploy (≈ 1–2 min)
+kubectl -n eco2mix get pods                 # 3 pods Running, READY 1/1
+curl -s localhost:8001/health; echo
+kubectl -n eco2mix delete pod <one pod>     # self-healing: a new pod starts at once
+kubectl -n eco2mix scale deployment/eco2mix-api --replicas=5
+bash k8s/deploy.sh delete                   # remove everything
+```
+
+What runs where: the **serving layer** (API) in Kubernetes; training, batch
+jobs, Airflow, MLflow and monitoring stay in Docker Compose. The pods use a
+**read-only snapshot** of `models/` and the data baked into the image
+`eco2mix-api-k8s` (`docker/api-k8s.Dockerfile`): a new champion means a new
+image and a rolling update (`bash k8s/deploy.sh` again). `POST /train` and
+`/predict` reach Airflow on the host through `host.docker.internal:8080`.
+Next steps for production: model from the MLflow registry, data from object
+storage (S3/MinIO), an Ingress, a HorizontalPodAutoscaler (needs
+metrics-server), Prometheus scraping the pods, and a multi-node cluster.
+
 ## Single entry point: NGINX
 
 Only the `nginx` container opens ports on your machine; `api`, `mlflow` and

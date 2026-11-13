@@ -1,0 +1,14 @@
+# OPTIONAL (as in the course): an Ingress routes HTTP traffic into the cluster.
+# Needs an ingress controller (e.g. ingress-nginx), which Docker Desktop does
+# not install. Our Service of type LoadBalancer is enough on one machine.
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: eco2mix-api
+  namespace: eco2mix
+spec:
+  defaultBackend:
+    service:
+      name: eco2mix-api
+      port:
+        number: 8001
