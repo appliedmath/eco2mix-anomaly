@@ -66,7 +66,7 @@ with user_tab:
                         marker={"color": "red", "size": 8})
         fig.update_layout(height=420, yaxis_title="MW", margin={"t": 10, "b": 10},
                           legend={"orientation": "h", "y": 1.1})
-        st.plotly_chart(fig, use_container_width=True)
+        st.plotly_chart(fig, width="stretch")
 
         left, right = st.columns(2)
         left.metric("Flagged half-hours", len(flagged))
@@ -76,7 +76,7 @@ with user_tab:
                       .groupby("day")
                       .agg(half_hours=("abs_z", "size"), max_abs_z=("abs_z", "max"), holiday=("is_holiday", "any"))
                       .round(2).sort_index(ascending=False))
-            st.dataframe(by_day, use_container_width=True)
+            st.dataframe(by_day, width="stretch")
 
     # 2. Was this day an anomaly?
     st.subheader("Was this day an anomaly?")
@@ -101,7 +101,7 @@ with user_tab:
             points = pd.DataFrame(answer["points"])
             points["time (Paris)"] = pd.to_datetime(points["timestamp_utc"], utc=True).dt.tz_convert(PARIS).dt.strftime("%H:%M")
             st.dataframe(points[["time (Paris)", "consumption_mw", "expected_mw", "z_score"]].round(1),
-                         hide_index=True, use_container_width=True)
+                         hide_index=True, width="stretch")
         else:
             st.success(f"No anomaly on this day.{holiday}")
 
@@ -186,6 +186,6 @@ with admin_tab:
             show(f"{job['dag_id']}: {state}")
             tasks = status.get("tasks")
             if tasks:
-                st.dataframe(pd.DataFrame(tasks), hide_index=True, use_container_width=True)
+                st.dataframe(pd.DataFrame(tasks), hide_index=True, width="stretch")
             with st.expander("Answer of the API"):
                 st.json(status)
