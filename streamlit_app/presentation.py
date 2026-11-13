@@ -154,16 +154,27 @@ def api():
 
 def airflow():
     header("Orchestration with Airflow", "Shari", 2, ["Airflow"])
-    st.markdown("**batch_dag** (every night, 00:00 UTC)")
-    st.code("inject_batch  →  validate  →  predict  →  drift", language=None)
-    st.markdown(
-        "- **inject_batch**: new complete days (live RTE API, or replay)\n"
-        "- **validate**: data-quality gate; a failed batch is moved to `data/rejected/`, predict does not run\n"
-        "- **predict**: the champion scores the new half-hours\n"
-        "- **drift**: Evidently report + status file for Prometheus/Grafana\n"
-        "- **retrain_dag** (weekly or `POST /train`): promote-or-reject\n"
-        "- Each task is a container from the trainer image (DockerOperator)"
-    )
+    left, right = st.columns(2)
+    with left:
+        st.markdown("**batch_dag** (every night, 00:00 UTC)")
+        st.code("inject_batch  →  validate  →  predict  →  drift", language=None)
+        st.markdown(
+            "- **inject_batch**: new complete days (live RTE API, or replay)\n"
+            "- **validate**: data-quality gate; a failed batch is moved to `data/rejected/`, predict does not run\n"
+            "- **predict**: the champion scores the new half-hours\n"
+            "- **drift**: Evidently report + status file for Prometheus/Grafana\n"
+            "- never trains; the new days stay in the processed data"
+        )
+    with right:
+        st.markdown("**retrain_dag** (every week, or on demand: `POST /train`)")
+        st.code("train  (promote-or-reject)", language=None)
+        st.markdown(
+            "- **train**: a new model on all processed data collected so far\n"
+            "- **gate**: replaces the champion only if it is not worse (recall, false alarms)\n"
+            "- every training is an MLflow run, promoted or rejected\n"
+            "- on demand from the operator app, the API docs or curl, through the API"
+        )
+    st.markdown("Each task runs in a fresh container from the trainer image (DockerOperator).")
     st.info("Real nightly runs with live data since 5 November. The first one-day run failed in inject_batch "
             "(the consolidated RTE data is empty after 31 August); found, reproduced, fixed with a test.")
     with st.expander("Speaker notes"):
