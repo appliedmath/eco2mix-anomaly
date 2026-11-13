@@ -393,6 +393,7 @@ curl -s -o /dev/null -w "%{http_code}\n" http://localhost:8000/metrics   # 403 f
 | `prometheus` | `prom/prometheus:v2.55.1` | http://localhost:9090 (127.0.0.1 only) → Status → Targets |
 | `node-exporter` | `prom/node-exporter:v1.8.2` | only inside Docker (Prometheus reads it) |
 | `grafana` | `grafana/grafana:11.4.0` | http://localhost:3000, user `admin`, password `GRAFANA_ADMIN_PASSWORD` |
+| http://localhost:8501 | Streamlit operator app (user and admin tabs; it talks only to the API). Only from this machine: the admin tab has no login |
 
 - **Configuration as code:** `monitoring/prometheus/prometheus.yml` (scrape every
   15 s; the API is found by DNS, so `--scale api=3` scrapes every container),

@@ -1,0 +1,5 @@
+# Streamlit operator app: talks only to the API (same pins as requirements.lock.txt)
+streamlit==1.65.0
+requests==2.34.2
+pandas==3.0.6
+plotly==5.24.1
