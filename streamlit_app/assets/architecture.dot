@@ -1,0 +1,43 @@
+// Architecture diagram of the presentation (page 3). Regenerate the PNG with:
+//   dot -Tpng -Gdpi=200 streamlit_app/assets/architecture.dot -o streamlit_app/assets/architecture.png
+digraph {
+  rankdir=TB; newrank=true; nodesep=0.5; ranksep=0.55; splines=spline;
+  node [shape=box, style="rounded,filled", fontname=Helvetica, fontsize=13, margin="0.22,0.1", color="#90a4ae", penwidth=1.2, width=2.4];
+  edge [fontname=Helvetica, fontsize=11, color="#607d8b", fontcolor="#455a64", arrowsize=0.8];
+
+  user  [label=<<b>Operator</b><br/><font point-size="11">browser</font>>, fillcolor="#ffffff"];
+  nginx [label=<<b>NGINX</b><br/><font point-size="11">single entry point · API key · rate limit</font>>, fillcolor="#e3f2fd", color="#64b5f6", width=4.2];
+
+  subgraph cluster_serve { label=<<b>Serving</b>>; fontname=Helvetica; fontsize=12; fontcolor="#1e88e5"; style="rounded,dashed"; color="#90caf9"; margin=14;
+    app [label=<<b>Streamlit</b><br/><font point-size="11">operator app</font>>, fillcolor="#e3f2fd", color="#64b5f6"];
+    api [label=<<b>FastAPI</b><br/><font point-size="11">results · /train · /predict · /metrics</font>>, fillcolor="#e3f2fd", color="#64b5f6"];
+  }
+  subgraph cluster_mon { label=<<b>Monitoring</b>>; fontname=Helvetica; fontsize=12; fontcolor="#ef6c00"; style="rounded,dashed"; color="#ffcc80"; margin=14;
+    prom    [label=<<b>Prometheus</b><br/><font point-size="11">+ node-exporter · 2 system alerts</font>>, fillcolor="#fff3e0", color="#ffb74d"];
+    grafana [label=<<b>Grafana</b><br/><font point-size="11">4 dashboards · 7 ML alerts</font>>, fillcolor="#fff3e0", color="#ffb74d"];
+  }
+  subgraph cluster_orch { label=<<b>Orchestration &amp; training</b>>; fontname=Helvetica; fontsize=12; fontcolor="#2e7d32"; style="rounded,dashed"; color="#a5d6a7"; margin=14;
+    airflow [label=<<b>Airflow</b><br/><font point-size="11">batch_dag (nightly) · retrain_dag</font>>, fillcolor="#e8f5e9", color="#81c784"];
+    trainer [label=<<b>trainer container</b><br/><font point-size="11">inject · validate · predict · drift · train</font>>, fillcolor="#e8f5e9", color="#81c784", width=3.4];
+    mlflow  [label=<<b>MLflow</b><br/><font point-size="11">tracking · registry @champion</font>>, fillcolor="#e8f5e9", color="#81c784"];
+  }
+  rte   [label=<<b>RTE éCO2mix</b><br/><font point-size="11">live data</font>>, fillcolor="#ffffff"];
+  files [label=<<b>data/ · models/</b><br/><font point-size="11">shared volumes · latest.json · DVC</font>>, fillcolor="#fffde7", color="#fdd835"];
+
+  user -> nginx;
+  nginx -> app; nginx -> api;
+  app -> api [label=" HTTP"];
+  api -> airflow [label=" start runs"];
+  airflow -> trainer [label=" DockerOperator"];
+  rte -> trainer;
+  trainer -> mlflow [label=" runs · gate"];
+  trainer -> files;
+  files -> api [label=" reads", style=dashed, constraint=false];
+  mlflow -> api [label=" champion", style=dashed, constraint=false];
+  prom -> api [label=" scrapes", style=dashed, dir=back];
+  prom -> grafana;
+
+  { rank=same; app; api; }
+  { rank=same; mlflow; files; }
+  { rank=same; rte; airflow; }
+}
