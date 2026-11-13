@@ -149,6 +149,8 @@ def main(argv=None):
 
     log_run(meta, model_dir=CANDIDATE_DIR, register=promote)
     if promote:
+        if "registry_version" in meta:   # remember which registry version this is
+            save_model(model, meta, CANDIDATE_DIR)
         promote_files(CANDIDATE_DIR, MODEL_DIR)
 
     print("Points:", len(y), "| weeks:", round(weeks, 1),

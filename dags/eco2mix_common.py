@@ -15,6 +15,13 @@ TRAINER_IMAGE = os.environ.get("TRAINER_IMAGE", "eco2mix-anomaly-trainer:latest"
 NETWORK = os.environ.get("COMPOSE_NETWORK", "eco2mix-anomaly_default")
 MODELS_POOL = "models"   # 1 slot: only one task at a time writes models/
 
+# Every job talks to MLflow: train logs/registers, predict loads @champion
+MLFLOW_ENV = {
+    "MLFLOW_TRACKING_URI": os.environ.get("MLFLOW_TRACKING_URI", "http://mlflow:5000"),
+    "MLFLOW_DISABLE_TELEMETRY": "true",
+    "GIT_PYTHON_REFRESH": "quiet",
+}
+
 DEFAULT_ARGS = {
     "owner": "eco2mix",
     "retries": 1,
@@ -40,6 +47,7 @@ def trainer_task_kwargs(**extra) -> dict:
         "mount_tmp_dir": False,       # no extra temp mount (fails on Docker Desktop)
         "auto_remove": "success",     # keep a failed container for debugging
         "pool": MODELS_POOL,
+        "environment": dict(MLFLOW_ENV),
     }
     kwargs.update(extra)
     return kwargs

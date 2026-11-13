@@ -1,9 +1,11 @@
-"""Batch prediction: score only the new half-hours with the saved model.
+"""Batch prediction: score only the new half-hours with the champion model.
 
-The saved model is what training learned on the history: for each
-detector the median and MAD of its normal error, plus K. Nothing is
-re-learned here. New results are appended to models/detections.parquet
-and models/anomaly_days.csv is rebuilt, so the API shows them at once.
+The champion is loaded from the MLflow Model Registry (alias @champion);
+the files in models/ are only the fallback (see registry.py). The model is
+what training learned on the history: for each detector the median and MAD
+of its normal error, plus K. Nothing is re-learned here. New results are
+appended to models/detections.parquet and models/anomaly_days.csv is
+rebuilt, so the API shows them at once.
 
     python -m src.models.predict
 """
@@ -14,7 +16,7 @@ import pandas as pd
 from src.models.anomaly_days import ANOMALY_DAYS, summarize_days
 from src.models.detect import WEEK, mstl_residual
 from src.models.events import build_reference_events
-from src.models.model import load_model
+from src.models.registry import load_champion_model, sync_files
 from src.models.train import DATA, DETECTIONS, make_detection
 
 MODEL_DIR = "models"
@@ -51,7 +53,10 @@ def score_new(df: pd.DataFrame, detections: pd.DataFrame,
 
 
 def main():
-    model, _ = load_model(MODEL_DIR)
+    model, meta, source = load_champion_model(MODEL_DIR)
+    print(f"Champion {meta['model_version']} loaded from {source}")
+    if source != "files" and sync_files(model, meta, MODEL_DIR):
+        print("Local copy in", MODEL_DIR, "updated to this champion")
     df = pd.read_parquet(DATA).sort_index()
     detections = pd.read_parquet(DETECTIONS)
 

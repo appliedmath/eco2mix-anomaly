@@ -102,6 +102,6 @@ def log_run(meta: dict, model_dir: str = "models",
             if os.path.exists(path):
                 mlflow.log_artifact(path)
         if register:
-            register_champion(model_dir)
+            meta["registry_version"] = register_champion(model_dir)
         print("MLflow: logged run", run.info.run_id)
         return run.info.run_id

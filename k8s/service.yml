@@ -1,0 +1,18 @@
+# One stable address for the 3 pods; Kubernetes spreads the requests.
+# Type LoadBalancer: on Docker Desktop it is published on localhost:8001
+# (8000 is already used by the Docker Compose NGINX).
+apiVersion: v1
+kind: Service
+metadata:
+  name: eco2mix-api
+  namespace: eco2mix
+  labels:
+    app: eco2mix-api
+spec:
+  type: LoadBalancer
+  selector:
+    app: eco2mix-api
+  ports:
+    - port: 8001
+      targetPort: 8000
+      protocol: TCP

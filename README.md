@@ -18,27 +18,54 @@ that serves the results.
 
 **Documentation:** [Architecture](docs/architecture.md) (services, who calls
 whom, flows, design decisions) · [CI/CD strategy](docs/cicd_strategy.md)
-(what happens when code, data or the model change) · [Monitoring plan](docs/monitoring_plan.md) (metrics, thresholds, alerts, actions) · [Ethics and security](docs/ethics_security.md).
+(what happens when code, data or the model change) · [Monitoring plan](docs/monitoring_plan.md) (metrics, thresholds, alerts, actions) · [Ethics and security](docs/ethics_security.md) · [Maintenance](docs/maintenance.md) (start, update, retrain, roll back, rotate secrets, lessons learned).
+
+**Shortcuts:** `make help` lists short commands (`make up`, `make test`,
+`make check`, `make presentation`, `make k8s`, …); each one is a normal
+command from this README.
 
 ## Architecture
 
 ```mermaid
-flowchart LR
-    RTE[(RTE éCO2mix API)] -->|collect + process| DATA[data/ processed + incoming<br/>versioned with DVC]
-    DATA --> TRAINER[trainer<br/>container]
-    TRAINER -->|params, metrics, model files| MLFLOW[mlflow<br/>tracking server :5000]
-    TRAINER -->|model + detections| MODELS[models/]
-    DATA --> BATCH[batch<br/>container]
-    MODELS --> BATCH
-    BATCH -->|new detections| MODELS
-    MODELS --> API[api<br/>FastAPI]
-    DATA --> API
-    USER((user)) --> NGINX[nginx<br/>:8000 :5000 :8080]
+flowchart TB
+    USER["<b>Operator</b><br/>browser"] --> NGINX["<b>NGINX</b><br/>single entry point · API key · rate limit"]
+
+    subgraph SERVING["Serving"]
+        APP["<b>Streamlit</b><br/>operator app"] -->|HTTP| API["<b>FastAPI</b><br/>results · /train · /predict · /metrics"]
+    end
+
+    subgraph ORCH["Orchestration and training"]
+        AIRFLOW["<b>Airflow</b><br/>batch_dag (nightly) · retrain_dag"] -->|DockerOperator| TRAINER["<b>trainer container</b><br/>inject · validate · predict · drift · train"]
+        TRAINER -->|runs · gate| MLFLOW["<b>MLflow</b><br/>tracking · registry @champion"]
+    end
+
+    subgraph MON["Monitoring"]
+        PROM["<b>Prometheus</b><br/>+ node-exporter · 2 system alerts"] --> GRAFANA["<b>Grafana</b><br/>4 dashboards · 7 ML alerts"]
+    end
+
+    RTE["<b>RTE éCO2mix</b><br/>live data"] --> TRAINER
+    TRAINER --> FILES["<b>data/ · models/</b><br/>latest.json · DVC → DagsHub"]
+
+    NGINX --> APP
     NGINX --> API
-    NGINX --> MLFLOW
-    NGINX --> AIRFLOW[airflow<br/>webserver + scheduler]
-    API -->|start DAG runs| AIRFLOW
-    AIRFLOW -->|DockerOperator| TRAINER
+    API -->|start runs| AIRFLOW
+    FILES -.->|reads| API
+    MLFLOW -.->|champion| API
+    PROM -.->|scrapes /metrics| API
+
+    classDef serve fill:#e3f2fd,stroke:#64b5f6,color:#0d1b2a
+    classDef orch fill:#e8f5e9,stroke:#81c784,color:#0d1b2a
+    classDef mon fill:#fff3e0,stroke:#ffb74d,color:#0d1b2a
+    classDef store fill:#fffde7,stroke:#fdd835,color:#0d1b2a
+    classDef ext fill:#ffffff,stroke:#90a4ae,color:#0d1b2a
+    class NGINX,APP,API serve
+    class AIRFLOW,TRAINER,MLFLOW orch
+    class PROM,GRAFANA mon
+    class FILES store
+    class USER,RTE ext
+    style SERVING fill:#f7fbff,stroke:#90caf9,stroke-dasharray:5 5
+    style ORCH fill:#f6fbf6,stroke:#a5d6a7,stroke-dasharray:5 5
+    style MON fill:#fffaf3,stroke:#ffcc80,stroke-dasharray:5 5
 ```
 
 | Service | What it does | Runs |
@@ -164,9 +191,16 @@ for Mac `DOCKER_GID` becomes `0`, which is right there.
 **Start:**
 
 ```bash
-docker compose up -d --build                # mlflow, then trainer, then api, nginx, Airflow
-docker compose ps -a                        # trainer "Exited (0)", others "Up"
+docker compose --profile init up trainer    # first time only: download, clean, train (~2 min)
+docker compose up -d --build                # mlflow, api, nginx, Airflow, monitoring
+docker compose ps -a                        # all "Up"/"healthy"
 ```
+
+The trainer has the Compose profile `init`, so a normal `docker compose up`
+does **not** retrain or register a new model version. Retraining is
+Airflow's job (`retrain_dag` every Sunday, or `POST /train`), always through
+promote-or-reject. The first command also builds the trainer image that the
+Airflow tasks use; after a code change: `docker compose build trainer api`.
 
 - MLflow: http://localhost:5000 (Model training → Runs; Models → `grid-anomaly-detector`).
   Port taken (e.g. by AirPlay on macOS)? Set `MLFLOW_PORT=5001` in `.env`.
@@ -224,8 +258,33 @@ docker compose run --rm trainer python -m src.models.train --k 2  # rejected: fa
 docker compose run --rm trainer python -m src.models.train --k 6  # rejected: lower recall
 ```
 
-The champion can be loaded from the registry:
-`mlflow.pyfunc.load_model("models:/grid-anomaly-detector@champion")`.
+### Where the model comes from: the MLflow Model Registry
+
+The jobs load the champion **from the registry by its alias**
+(`models:/grid-anomaly-detector@champion`), not from a file:
+
+- `predict` (batch_dag) scores new data with the registry's champion;
+- `train` compares the candidate with the registry's champion on the same data.
+
+Why: MLflow knows which model file belongs to which training run (nobody can
+quietly swap `models/model.joblib`), the jobs only need the MLflow URL (works
+when the services run on different machines), and every version stays
+available. **Rollback** = move the alias `champion` to an older version in the
+MLflow UI (Models → grid-anomaly-detector → version → Aliases); the next
+batch run uses it and updates the local copy in `models/`.
+
+`models/` keeps a copy of the champion: it is what the API serves, and the
+fallback when MLflow is not reachable (or `MLFLOW_TRACKING_URI` is not set,
+e.g. in the tests). `GET /champion` shows the registry's champion and whether
+the API's copy is the same version:
+
+```bash
+curl -s http://localhost:8000/champion; echo
+# {"registry":{"name":"grid-anomaly-detector","alias":"champion","version":"6","run_id":"..."},
+#  "in_use":{"model_version":"20261104-121941","registry_version":"6"},"in_sync":true}
+```
+
+In Python: `mlflow.pyfunc.load_model("models:/grid-anomaly-detector@champion")`.
 
 ### Retrain and reset
 
@@ -256,7 +315,8 @@ Both tasks share a pool with one slot, so two jobs never write `models/` at
 the same time.
 
 **First time:** set up `.env` and `airflow/logs` as in
-[Run it with Docker](#run-it-with-docker), then `docker compose up -d --build`.
+[Run it with Docker](#run-it-with-docker), then `docker compose --profile init up trainer`
+and `docker compose up -d --build`.
 Moved the project folder? Run the `HOST_PROJECT_DIR` line again and
 `docker compose up -d`.
 
@@ -275,6 +335,7 @@ After a run, the API picks up the new files automatically (no restart).
 |---|---|
 | `GET /health` | status, `model_version`, `last_data` (end of training data), `newest_data` (newest measured half-hour) |
 | `GET /model-info` | training metadata and metrics |
+| `GET /champion` | the champion in the MLflow Model Registry (version, run) and whether the API shows that version (`in_sync`) |
 | `GET /anomaly-day?day=YYYY-MM-DD` | was there an anomaly on this Paris calendar day? Points, max \|z\|, peak time; optional `detector` |
 | `GET /anomalies?start=&end=` | flagged half-hours; optional `detector`, `only_anomalies` |
 | `GET /series?start=&end=` | consumption and RTE forecasts |
@@ -370,7 +431,7 @@ curl -s -o /dev/null -w "%{http_code}\n" http://localhost:8000/metrics   # 403 f
 | `prometheus` | `prom/prometheus:v2.55.1` | http://localhost:9090 (127.0.0.1 only) → Status → Targets |
 | `node-exporter` | `prom/node-exporter:v1.8.2` | only inside Docker (Prometheus reads it) |
 | `grafana` | `grafana/grafana:11.4.0` | http://localhost:3000, user `admin`, password `GRAFANA_ADMIN_PASSWORD` |
-| http://localhost:8501 | Streamlit operator app (user and admin tabs; it talks only to the API) |
+| http://localhost:8501 | Streamlit operator app (user and admin tabs; it talks only to the API). Only from this machine: the admin tab has no login |
 
 - **Configuration as code:** `monitoring/prometheus/prometheus.yml` (scrape every
   15 s; the API is found by DNS, so `--scale api=3` scrapes every container),
@@ -393,7 +454,7 @@ curl -s -o /dev/null -w "%{http_code}\n" http://localhost:8000/metrics   # 403 f
 |---|---|
 | `0 · Stack health` | targets up, champion version, data age (one glance) |
 | `1 · API performance` | API containers up, requests/s, 5xx share, P95 latency (SLO 200 ms), requests rejected by the API key, per-endpoint and per-status graphs |
-| `2 · Model & data` | champion, K, training recall / false alarms; data freshness (red after 36 h), last batch rows / quality / end; input and prediction drift; rolling recall and false alarms on live data; business KPI `anomaly_days_last_7d` |
+| `2 · Model & data` | champion, K, training recall / false alarms; data freshness (orange after 26 h, red after 36 h); drift shown in orange (alert only), last batch rows / quality / end; input and prediction drift; rolling recall and false alarms on live data; business KPI `anomaly_days_last_7d` |
 | `3 · Infrastructure` | scraped targets, CPU, RAM, disk, network, load (node-exporter) |
 
 **Alerts**
@@ -427,6 +488,54 @@ docker compose up -d                       # starts prometheus, node-exporter, g
 docker compose up -d --force-recreate nginx  # nginx gets the ports 3000 and 9090
 curl -s localhost:9090/api/v1/targets | python3 -c "import json,sys; [print(t['labels']['job'], t['health']) for t in json.load(sys.stdin)['data']['activeTargets']]"
 ```
+
+## Scaling: several API containers, Docker Compose and Kubernetes
+
+The API is **stateless** (it reads the champion's results and the data, it never
+trains), so it can run as several identical copies.
+
+**Docker Compose** — three API containers behind NGINX:
+```bash
+docker compose up -d --scale api=3
+docker compose ps api                     # api-1, api-2, api-3
+```
+NGINX resolves `api` through Docker's DNS on every request and spreads the
+requests over the three containers; Prometheus finds all three (DNS discovery):
+Grafana → "1 · API performance" → *API containers up* = 3. Back to one:
+`docker compose up -d --scale api=1`.
+
+**Kubernetes** (Docker Desktop: Settings → Kubernetes → Enable, type *kubeadm*)
+— the serving layer as a Deployment, as in the Kubernetes course:
+
+```
+k8s/namespace.yml        namespace eco2mix
+k8s/configmap.yml        settings (paths, Airflow URL)
+k8s/secret.example.yml   template only; the real Secret is created from .env
+k8s/deployment.yml       3 replicas, readiness + liveness on /health, CPU/RAM limits,
+                         rolling update without downtime (maxUnavailable 0)
+k8s/service.yml          one address for the 3 pods: http://localhost:8001
+k8s/ingress.example.yml  optional (needs an ingress controller)
+k8s/deploy.sh            build the image, create the Secret from .env, apply, wait
+```
+
+```bash
+bash k8s/deploy.sh                          # build + deploy (≈ 1–2 min)
+kubectl -n eco2mix get pods                 # 3 pods Running, READY 1/1
+curl -s localhost:8001/health; echo
+kubectl -n eco2mix delete pod <one pod>     # self-healing: a new pod starts at once
+kubectl -n eco2mix scale deployment/eco2mix-api --replicas=5
+bash k8s/deploy.sh delete                   # remove everything
+```
+
+What runs where: the **serving layer** (API) in Kubernetes; training, batch
+jobs, Airflow, MLflow and monitoring stay in Docker Compose. The pods use a
+**read-only snapshot** of `models/` and the data baked into the image
+`eco2mix-api-k8s` (`docker/api-k8s.Dockerfile`): a new champion means a new
+image and a rolling update (`bash k8s/deploy.sh` again). `POST /train` and
+`/predict` reach Airflow on the host through `host.docker.internal:8080`.
+Next steps for production: model from the MLflow registry, data from object
+storage (S3/MinIO), an Ingress, a HorizontalPodAutoscaler (needs
+metrics-server), Prometheus scraping the pods, and a multi-node cluster.
 
 ## Single entry point: NGINX
 
@@ -484,14 +593,14 @@ lock file (`statsforecast 2.0.3` requires `scipy < 1.16`); our own code uses
 | Path | Content |
 |---|---|
 | `src/data/` | `collect.py` (download), `process.py` (30-min grid, flags, validation), `batches.py` (80/20 split, batches, live RTE data, quality check), `drift.py` (seasonal drift with Evidently) |
-| `src/models/` | `detect.py` (MSTL), `train.py`, `promote.py` (promote or reject), `compare.py` (detectors × K in MLflow), `predict.py` (batch scoring), `tracking.py` (MLflow runs + registry), `pyfunc_model.py` (model for the registry), `events.py` (reference events), `anomaly_days.py`, `model.py` |
+| `src/models/` | `detect.py` (MSTL), `train.py`, `promote.py` (promote or reject), `compare.py` (detectors × K in MLflow), `predict.py` (batch scoring), `registry.py` (load @champion from the registry), `tracking.py` (MLflow runs + registry), `pyfunc_model.py` (model for the registry), `events.py` (reference events), `anomaly_days.py`, `model.py` |
 | `src/api/` | FastAPI service |
 | `scripts/` | `split_holdout.py`, `inject_batch.py`, `validate_batch.py`, `drift_batch.py`, `inspect_alarms.py`, `check_clock_change.py` (clock-change day on fresh RTE data) |
 | `dags/` | Airflow DAGs (`batch_dag`, `retrain_dag`) and their shared settings |
 | `docker/` | Dockerfiles (trainer, api, airflow), per-service requirements, job scripts, `nginx/default.conf` |
 | `monitoring/` | Prometheus configuration and alert rules, Grafana data source, dashboards and alerts (as code) |
 | `config/` | reference events added by hand |
-| `docs/` | `architecture.md`, `cicd_strategy.md`, `monitoring_plan.md`, `ethics_security.md` |
+| `docs/` | `architecture.md`, `cicd_strategy.md`, `monitoring_plan.md`, `ethics_security.md`, `maintenance.md` |
 | `data/*.dvc` | DVC receipts (the data itself is in DVC storage) |
 | `notebooks/` | data exploration |
 | `tests/` | unit tests |

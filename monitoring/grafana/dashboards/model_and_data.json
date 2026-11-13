@@ -318,7 +318,7 @@
       "id": 8,
       "type": "stat",
       "title": "Data updated",
-      "description": "Time since the processed data file last changed. Red after 36 h = the same limit as the NoNewData alert.",
+      "description": "Time since the processed data file last changed. The batch runs daily: orange after 26 h, red after 36 h (= the NoNewData alert).",
       "datasource": {
         "type": "prometheus",
         "uid": "prometheus"
@@ -351,6 +351,10 @@
               {
                 "color": "green",
                 "value": null
+              },
+              {
+                "color": "orange",
+                "value": 93600
               },
               {
                 "color": "red",
@@ -650,7 +654,7 @@
                 },
                 "1": {
                   "text": "YES",
-                  "color": "red",
+                  "color": "orange",
                   "index": 1
                 }
               }
@@ -664,7 +668,7 @@
                 "value": null
               },
               {
-                "color": "red",
+                "color": "orange",
                 "value": 1
               }
             ]
@@ -725,7 +729,7 @@
                 "value": null
               },
               {
-                "color": "red",
+                "color": "orange",
                 "value": 0.5
               }
             ]
@@ -788,7 +792,7 @@
                 },
                 "1": {
                   "text": "YES",
-                  "color": "red",
+                  "color": "orange",
                   "index": 1
                 }
               }
@@ -802,7 +806,7 @@
                 "value": null
               },
               {
-                "color": "red",
+                "color": "orange",
                 "value": 1
               }
             ]
@@ -862,7 +866,7 @@
                 "value": null
               },
               {
-                "color": "red",
+                "color": "orange",
                 "value": 0.2
               }
             ]
@@ -926,7 +930,7 @@
                 },
                 "1": {
                   "text": "YES",
-                  "color": "red",
+                  "color": "orange",
                   "index": 1
                 }
               }
@@ -940,7 +944,7 @@
                 "value": null
               },
               {
-                "color": "red",
+                "color": "orange",
                 "value": 1
               }
             ]

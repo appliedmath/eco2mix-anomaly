@@ -1,6 +1,7 @@
 # Services
 #   mlflow  - tracking server (runs, metrics, model registry)
 #   trainer - one-off job: collect -> process -> train, logs to MLflow
+#             (profile "init": not started by a normal 'up')
 #   api     - FastAPI, reads what the trainer wrote
 #   airflow-* - orchestrator (Phase 3): batch_dag daily, retrain_dag weekly;
 #               each task starts the trainer image through the Docker socket
@@ -10,7 +11,8 @@
 #   prometheus, node-exporter, grafana - monitoring (Phase 4)
 # First time:        cp .env.example .env   (fill in the Airflow values)
 #                    mkdir -p airflow/logs
-# Start everything:  docker compose up -d --build
+# First training:    docker compose --profile init up trainer   (fresh setup only)
+# Start everything:  docker compose up -d --build   (does not retrain)
 # Airflow UI:        http://localhost:8080
 # Retrain by hand:   docker compose run --rm trainer
 #   (promote or reject: the new model replaces the old one only if not worse)
@@ -71,6 +73,10 @@ services:
       retries: 10
 
   trainer:
+    # One-off job, not part of the normal startup: retraining is Airflow's
+    # job (retrain_dag weekly, POST /train) with promote-or-reject.
+    # First training on a fresh setup: docker compose --profile init up trainer
+    profiles: ["init"]
     build:
       context: .
       dockerfile: docker/trainer.Dockerfile
@@ -92,6 +98,10 @@ services:
       context: .
       dockerfile: docker/trainer.Dockerfile
     command: ["sh", "batch.sh"]
+    environment:
+      - MLFLOW_TRACKING_URI=http://mlflow:5000   # predict loads @champion
+      - MLFLOW_DISABLE_TELEMETRY=true
+      - GIT_PYTHON_REFRESH=quiet
     volumes:
       - ./data:/app/data
       - ./models:/app/models
@@ -103,6 +113,8 @@ services:
     environment:
       - MODEL_DIR=/app/models
       - DATA_PATH=/app/data/processed/consumption_30min.parquet
+      # GET /champion asks the MLflow Model Registry for @champion
+      - MLFLOW_TRACKING_URI=http://mlflow:5000
       # POST /train and /predict start Airflow DAG runs through its REST API
       - AIRFLOW_URL=http://airflow-webserver:8080
       - AIRFLOW_USER=${AIRFLOW_ADMIN_USER:-admin}
@@ -113,9 +125,6 @@ services:
     volumes:
       - ./data:/app/data:ro
       - ./models:/app/models:ro
-    depends_on:
-      trainer:
-        condition: service_completed_successfully
 
   # ---------- NGINX: single entry point (Phase 3) ----------
   # The only service with ports on your machine. Same URLs as before:
@@ -139,7 +148,8 @@ services:
       - "${MLFLOW_PORT:-5000}:5000"
       - "${AIRFLOW_PORT:-8080}:8080"
       - "${GRAFANA_PORT:-3000}:3000"
-      - "${STREAMLIT_PORT:-8501}:8501"
+      # Streamlit: the admin tab has no login, so only from this machine (like Prometheus)
+      - "127.0.0.1:${STREAMLIT_PORT:-8501}:8501"
       # Prometheus has no login: only reachable from this machine
       - "127.0.0.1:${PROMETHEUS_PORT:-9090}:9090"
     volumes:

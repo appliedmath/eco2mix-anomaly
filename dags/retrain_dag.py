@@ -25,10 +25,5 @@ the alias `@champion` in the registry.
     DockerOperator(
         task_id="train",
         command="python -m src.models.train",
-        environment={
-            "MLFLOW_TRACKING_URI": "http://mlflow:5000",
-            "MLFLOW_DISABLE_TELEMETRY": "true",
-            "GIT_PYTHON_REFRESH": "quiet",
-        },
         **trainer_task_kwargs(),
     )
