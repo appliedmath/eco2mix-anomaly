@@ -20,8 +20,9 @@ age green) and the alert list. Nothing red → nothing to do.
 ## 2. Start, stop, update
 
 ```bash
-docker compose up -d                 # start everything (the one-shot trainer also trains once)
-docker compose ps                    # all "Up"/"healthy"; trainer and airflow-init "Exited (0)"
+docker compose --profile init up trainer   # fresh setup only: first training (make init)
+docker compose up -d                 # start everything; does NOT retrain (trainer has the profile "init")
+docker compose ps                    # all "Up"/"healthy"; airflow-init "Exited (0)"
 docker compose down                  # stop (data, runs, metrics are kept in volumes and folders)
 ```
 
@@ -41,14 +42,18 @@ docker compose down                  # stop (data, runs, metrics are kept in vol
 
 - **Retrain now:** `POST /train` with the API key (Swagger at `/docs`), the
   admin tab of the Streamlit app, or `docker compose run --rm trainer`.
+  A restart (`docker compose up`) does **not** retrain: the trainer service
+  has the Compose profile `init` and only runs when asked.
 - **Check the decision:** MLflow → run → tag `decision` (`promoted` /
   `rejected`) and the reason; a promotion fires the **NewChampion** alert.
-- **Roll back:** today the API serves the champion files in `models/`.
-  Every run is kept in MLflow (parameters, metrics, artifacts) and every
-  promoted model is a registry version, so the earlier champion can be
-  restored from there, or retrained on the earlier data (`dvc checkout`).
-  Planned: the API loads `models:/grid-anomaly-detector@champion`, then a
-  rollback is only moving the alias.
+- **Roll back:** the batch job and retraining load the champion from the
+  registry (`models:/grid-anomaly-detector@champion`); the API serves a
+  synced copy in `models/`. To roll back, move the alias `champion` to the
+  earlier version in the MLflow UI (Models → grid-anomaly-detector → version
+  → Aliases), then run a batch (`POST /predict`, or wait for the nightly run):
+  it loads that version and updates `models/`. `GET /champion` shows
+  `in_sync: false` until then and `true` afterwards. Every version stays in
+  the registry, so rolling forward again is the same step.
 - **Never retrain because of a drift alert alone:** first read the Evidently
   report (`models/drift/reports/`) and check the data; drift can come from a
   data bug. The promotion gate still protects the champion.

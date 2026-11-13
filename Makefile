@@ -2,7 +2,7 @@
 # Every target is a normal command you can also type yourself (see README).
 
 .DEFAULT_GOAL := help
-.PHONY: help up stop down ps logs rebuild retrain test lint check dashboards \
+.PHONY: help init up stop down ps logs rebuild retrain test lint check dashboards \
         presentation k8s k8s-delete
 
 help:  ## show this list
@@ -10,7 +10,10 @@ help:  ## show this list
 	  awk 'BEGIN {FS = ":.*## "}; {printf "  make %-13s %s\n", $$1, $$2}'
 
 # ---------- run the stack ----------
-up:  ## start all services (first start trains a model, ~1-2 min)
+init:  ## first time only: download, clean and train the first model
+	docker compose --profile init up trainer
+
+up:  ## start all services (does not retrain)
 	docker compose up -d
 
 stop:  ## stop the services, keep containers and data
@@ -26,8 +29,8 @@ logs:  ## follow the logs of one service: make logs s=api
 	docker compose logs -f --tail=100 $(s)
 
 rebuild:  ## rebuild the images after a code change, then recreate
-	docker compose build trainer api
-	docker compose up -d --force-recreate api nginx
+	docker compose build trainer api streamlit
+	docker compose up -d --force-recreate api streamlit nginx airflow-scheduler airflow-webserver
 
 retrain:  ## retrain once without Airflow (promote or reject)
 	docker compose run --rm trainer python -m src.models.train

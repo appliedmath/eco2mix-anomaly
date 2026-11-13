@@ -191,9 +191,16 @@ for Mac `DOCKER_GID` becomes `0`, which is right there.
 **Start:**
 
 ```bash
-docker compose up -d --build                # mlflow, then trainer, then api, nginx, Airflow
-docker compose ps -a                        # trainer "Exited (0)", others "Up"
+docker compose --profile init up trainer    # first time only: download, clean, train (~2 min)
+docker compose up -d --build                # mlflow, api, nginx, Airflow, monitoring
+docker compose ps -a                        # all "Up"/"healthy"
 ```
+
+The trainer has the Compose profile `init`, so a normal `docker compose up`
+does **not** retrain or register a new model version. Retraining is
+Airflow's job (`retrain_dag` every Sunday, or `POST /train`), always through
+promote-or-reject. The first command also builds the trainer image that the
+Airflow tasks use; after a code change: `docker compose build trainer api`.
 
 - MLflow: http://localhost:5000 (Model training → Runs; Models → `grid-anomaly-detector`).
   Port taken (e.g. by AirPlay on macOS)? Set `MLFLOW_PORT=5001` in `.env`.
@@ -308,7 +315,8 @@ Both tasks share a pool with one slot, so two jobs never write `models/` at
 the same time.
 
 **First time:** set up `.env` and `airflow/logs` as in
-[Run it with Docker](#run-it-with-docker), then `docker compose up -d --build`.
+[Run it with Docker](#run-it-with-docker), then `docker compose --profile init up trainer`
+and `docker compose up -d --build`.
 Moved the project folder? Run the `HOST_PROJECT_DIR` line again and
 `docker compose up -d`.
 

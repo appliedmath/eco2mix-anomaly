@@ -62,7 +62,7 @@ rolling updates) — see [Scaling with Kubernetes](#scaling-with-kubernetes).
 | `airflow-db` | `postgres:16` | always on | Airflow metadata: DAG runs, task states, users, pool | none |
 | `airflow-init` | same as Airflow | one-off | Database migration, admin user, pool `models` (1 slot) | none |
 | trainer container | own, `python:3.12-slim` | **job** (start → work → stop) | Started by Airflow for each task: `inject_batch`, `validate`, `predict`, `drift`, `train` | none |
-| `trainer` / `batch` | same trainer image | one-off / on demand | Manual runs without Airflow (`docker compose run --rm trainer`) | none |
+| `trainer` / `batch` | same trainer image | one-off / on demand | Profile `init`: not started by `docker compose up`. First training: `docker compose --profile init up trainer`; manual runs without Airflow: `docker compose run --rm trainer` | none |
 
 **Always-on vs jobs** (Kilyan, 30 Oct): the API, MLflow and Airflow must
 always answer (predictions, model downloads, run status). Training and batch
