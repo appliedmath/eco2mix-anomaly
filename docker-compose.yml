@@ -1,6 +1,7 @@
 # Services
 #   mlflow  - tracking server (runs, metrics, model registry)
 #   trainer - one-off job: collect -> process -> train, logs to MLflow
+#             (profile "init": not started by a normal 'up')
 #   api     - FastAPI, reads what the trainer wrote
 #   airflow-* - orchestrator (Phase 3): batch_dag daily, retrain_dag weekly;
 #               each task starts the trainer image through the Docker socket
@@ -10,7 +11,8 @@
 #   prometheus, node-exporter, grafana - monitoring (Phase 4)
 # First time:        cp .env.example .env   (fill in the Airflow values)
 #                    mkdir -p airflow/logs
-# Start everything:  docker compose up -d --build
+# First training:    docker compose --profile init up trainer   (fresh setup only)
+# Start everything:  docker compose up -d --build   (does not retrain)
 # Airflow UI:        http://localhost:8080
 # Retrain by hand:   docker compose run --rm trainer
 #   (promote or reject: the new model replaces the old one only if not worse)
@@ -71,6 +73,10 @@ services:
       retries: 10
 
   trainer:
+    # One-off job, not part of the normal startup: retraining is Airflow's
+    # job (retrain_dag weekly, POST /train) with promote-or-reject.
+    # First training on a fresh setup: docker compose --profile init up trainer
+    profiles: ["init"]
     build:
       context: .
       dockerfile: docker/trainer.Dockerfile
@@ -119,9 +125,6 @@ services:
     volumes:
       - ./data:/app/data:ro
       - ./models:/app/models:ro
-    depends_on:
-      trainer:
-        condition: service_completed_successfully
 
   # ---------- NGINX: single entry point (Phase 3) ----------
   # The only service with ports on your machine. Same URLs as before:

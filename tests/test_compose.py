@@ -28,6 +28,13 @@ def test_nginx_forwards_to_existing_services():
         assert host in SERVICES, f"nginx points to unknown service {host}"
 
 
+def test_trainer_is_not_part_of_the_normal_startup():
+    # docker compose up must not retrain: retraining is Airflow's job
+    assert SERVICES["trainer"]["profiles"] == ["init"]
+    for name, svc in SERVICES.items():
+        assert "trainer" not in (svc.get("depends_on") or {}), name
+
+
 def test_job_endpoints_are_rate_limited():
     block = NGINX_CONF.split("location ~ ^/(train|predict)$", 1)[1].split("}", 1)[0]
     assert "limit_req zone=jobs" in block
