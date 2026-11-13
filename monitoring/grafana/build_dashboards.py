@@ -14,6 +14,13 @@ OUT = Path(__file__).parent / "dashboards"
 DS = {"type": "prometheus", "uid": "prometheus"}
 HOUR = 3600
 
+# drift is "alert only": YES is orange, not red (red = something is broken)
+GREEN_ORANGE = {"mode": "absolute", "steps": [{"color": "green", "value": None},
+                                              {"color": "orange", "value": 1}]}
+# data age: the batch runs daily -> green < 26 h, orange 26-36 h, red > 36 h (= NoNewData)
+DATA_AGE = {"mode": "absolute", "steps": [{"color": "green", "value": None},
+                                          {"color": "orange", "value": 26 * 3600},
+                                          {"color": "red", "value": 36 * 3600}]}
 GREEN_RED = {"mode": "absolute", "steps": [{"color": "green", "value": None},
                                            {"color": "red", "value": 1}]}
 UP_MAP = [{"type": "value", "options": {
@@ -22,7 +29,7 @@ UP_MAP = [{"type": "value", "options": {
                                   "result": {"text": "UP", "color": "green", "index": 1}}}]
 YES_NO = [{"type": "value", "options": {
     "0": {"text": "no", "color": "green", "index": 0},
-    "1": {"text": "YES", "color": "red", "index": 1}}}]
+    "1": {"text": "YES", "color": "orange", "index": 1}}}]   # drift = alert only
 OK_FAILED = [{"type": "value", "options": {
     "0": {"text": "OK", "color": "green", "index": 0},
     "1": {"text": "FAILED", "color": "red", "index": 1}}}]
@@ -191,9 +198,9 @@ def model_dashboard():
         panel(L, "stat", "Data updated", [
             ("time() - data_updated_timestamp_seconds", "age")], w=6, unit="s",
             text_mode="value",
-            thresholds=thresholds(("green", None), ("red", 36 * HOUR)),
-            description="Time since the processed data file last changed. Red after 36 h "
-                        "= the same limit as the NoNewData alert."),
+            thresholds=DATA_AGE,
+            description="Time since the processed data file last changed. The batch runs daily: "
+                        "orange after 26 h, red after 36 h (= the NoNewData alert)."),
         panel(L, "stat", "Newest measured half-hour", [
             ("data_last_timestamp_seconds * 1000", "newest")], w=6, unit="dateTimeAsIso",
             text_mode="value", options={"colorMode": "none"},
@@ -209,22 +216,22 @@ def model_dashboard():
 
         L.row("Drift (new data vs the same weeks of the 3 earlier years) — alert only"),
         panel(L, "stat", "Input drift", [("input_drift_detected", "inputs")], w=4,
-              mappings=YES_NO, thresholds=GREEN_RED, text_mode="value",
+              mappings=YES_NO, thresholds=GREEN_ORANGE, text_mode="value",
               description="Consumption and RTE forecast compared with the seasonal "
                           "reference (Evidently). Drift = alert, never automatic retraining."),
         panel(L, "stat", "Input drift share", [("input_drift_share", "share")], w=4,
               unit="percentunit", text_mode="value",
-              thresholds=thresholds(("green", None), ("red", 0.5))),
+              thresholds=thresholds(("green", None), ("orange", 0.5))),
         panel(L, "stat", "Prediction drift", [("prediction_drift_detected", "z-score")],
-              w=4, mappings=YES_NO, thresholds=GREEN_RED, text_mode="value",
+              w=4, mappings=YES_NO, thresholds=GREEN_ORANGE, text_mode="value",
               description="Distribution of the model's z-score vs the reference."),
         panel(L, "stat", "Prediction drift score", [
             ("prediction_drift_score", "Wasserstein")], w=4, decimals=3, text_mode="value",
-            thresholds=thresholds(("green", None), ("red", 0.2)),
+            thresholds=thresholds(("green", None), ("orange", 0.2)),
             description="Wasserstein distance of the z-scores; threshold 0.2 "
                         "(≈ 0.1 is sampling noise for one week)."),
         panel(L, "stat", "Drift (all columns)", [("drift_detected", "all")], w=4,
-              mappings=YES_NO, thresholds=GREEN_RED, text_mode="value"),
+              mappings=YES_NO, thresholds=GREEN_ORANGE, text_mode="value"),
         panel(L, "stat", "Anomaly rate, last batch", [("anomaly_rate_last_batch", "rate")],
               w=4, unit="percentunit", decimals=1, text_mode="value",
               options={"colorMode": "none"}),
@@ -307,7 +314,7 @@ def stack_dashboard():
               text_mode="name", options={"colorMode": "none"}),
         panel(L, "stat", "Data updated (age)", [
             ("time() - data_updated_timestamp_seconds", "age")], w=8, unit="s",
-            text_mode="value", thresholds=thresholds(("green", None), ("red", 36 * HOUR))),
+            text_mode="value", thresholds=DATA_AGE),
     ]
     return dashboard("eco2mix-stack", "0 · Stack health",
                      "One-glance check: targets up, champion, data age.", p, "now-1h")
