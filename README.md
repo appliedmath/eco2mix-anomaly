@@ -14,7 +14,7 @@ that serves the results.
 | **1** | Scoping, objectives and metrics; RTE data collected and cleaned (UTC 30-minute grid, clock-change fix, validation); MSTL detector and two baselines evaluated on reference events; read-only FastAPI service; unit tests | ✅ done |
 | **2** | Docker services (MLflow, trainer, batch, API), MLflow tracking, DVC data versioning (DagsHub), 80/20 split with batch prediction on new data, promote-or-reject retraining with the MLflow Model Registry | ✅ done |
 | **3** | Airflow DAGs for batch prediction and retraining (DockerOperator); API endpoints that start them through Airflow (`POST /train`, `POST /predict`); MLflow model signature; NGINX as single entry point; API key; CI with GitHub Actions | ✅ done (tag `v0.3`) |
-| **4** | Prometheus + Grafana monitoring, drift detection, Streamlit dashboard | ⏳ planned |
+| **4** | Live RTE data (team extension); data-quality gate (a failed batch goes to `data/rejected/`); seasonal drift with Evidently (input, prediction and rolling model drift); Prometheus, node-exporter and Grafana with system and ML alerts; CI builds the Docker images; monitoring plan and ethics note; Streamlit app | 🚧 in progress |
 
 **Documentation:** [Architecture](docs/architecture.md) (services, who calls
 whom, flows, design decisions) · [CI/CD strategy](docs/cicd_strategy.md)
@@ -249,7 +249,7 @@ DockerOperator chapter.
 
 | DAG | Schedule | Tasks |
 |---|---|---|
-| `batch_dag` | daily | `inject_batch` (next day of data; run conf `{"days": 7}` for a week) → `predict` |
+| `batch_dag` | daily | `inject_batch` (new days: live RTE API or replay; run conf `{"days": 7}` for a week in replay) → `validate` (data quality; a failed batch goes to `data/rejected/`) → `predict` → `drift` (Evidently, writes `models/drift/latest.json`) |
 | `retrain_dag` | weekly | `train` (promote-or-reject, logged in MLflow) |
 
 Both tasks share a pool with one slot, so two jobs never write `models/` at
@@ -342,7 +342,7 @@ own registry, as in the course). Prometheus reads it **inside Docker**
 | `detections_last_timestamp_seconds`, `anomalies_last_7d{detector}` | Gauge | newest scored half-hour, flagged half-hours in the last 7 days |
 | `anomaly_days_last_7d{detector}` | Gauge | days with an alert in the last 7 days (business KPI: operator alert load) |
 | `input_drift_detected`, `input_drift_share`, `prediction_drift_detected`, `prediction_drift_score` | Gauge | drift of the inputs (consumption, RTE forecast) and of the model's z-score, from `latest.json` |
-| `model_recall_rolling`, `false_alarms_per_week_rolling` | Gauge | model quality on live data (holidays of the last 90 days), from `latest.json` |
+| `model_recall_rolling`, `false_alarms_per_week_rolling` | Gauge | model quality on live data (weekday public holidays of the last 365 days, non-holiday alarm days of the last 28 days), from `latest.json` |
 | `batch_rows`, `batch_end_timestamp_seconds`, `data_quality_failed`, `drift_detected`, `drift_share`, `anomaly_rate_last_batch` | Gauge | last batch, from `models/drift/latest.json` (batch_dag) |
 
 The model, data and batch values are read from the files at each scrape;
@@ -377,13 +377,48 @@ curl -s -o /dev/null -w "%{http_code}\n" http://localhost:8000/metrics   # 403 f
   `monitoring/prometheus/alert_rules.yml`, Grafana's data source and dashboards in
   `monitoring/grafana/`. A fresh `docker compose up -d` shows everything, no clicking.
 - **Alerts in Prometheus (system):** `ApiDown` (no API container answers for 1 min),
-  `NoNewData` (the processed data was not updated for 36 h). ML alerts (data quality,
-  drift, new champion) are defined in Grafana.
+  `NoNewData` (no new half-hour in the data for 36 h, also when batches are rejected).
+  ML alerts (data quality, drift, model quality, alert load, new champion) are defined in
+  Grafana, with the names of `docs/monitoring_plan.md`.
 - **Secrets:** Grafana's admin password comes from `.env`; sign-up and anonymous access
   are off. Prometheus has no login, so it is published on `127.0.0.1` only.
 - **node-exporter on Docker Desktop** (WSL, macOS) measures the Docker VM, not
   Windows/macOS itself.
 - RAM: the three services add about 300–400 MB.
+
+**Dashboards** (Grafana → Dashboards → folder `eco2mix`; built from
+`monitoring/grafana/build_dashboards.py`, committed as JSON):
+
+| Dashboard | Shows |
+|---|---|
+| `0 · Stack health` | targets up, champion version, data age (one glance) |
+| `1 · API performance` | API containers up, requests/s, 5xx share, P95 latency (SLO 200 ms), requests rejected by the API key, per-endpoint and per-status graphs |
+| `2 · Model & data` | champion, K, training recall / false alarms; data freshness (red after 36 h), last batch rows / quality / end; input and prediction drift; rolling recall and false alarms on live data; business KPI `anomaly_days_last_7d` |
+| `3 · Infrastructure` | scraped targets, CPU, RAM, disk, network, load (node-exporter) |
+
+**Alerts**
+
+| Alert | Where | Fires when |
+|---|---|---|
+| `ApiDown` | Prometheus | no API container answers `/metrics` for 1 min |
+| `NoNewData` | Prometheus | no new half-hour for 36 h (file not updated, or batches rejected) |
+| `DataQualityFailed` | Grafana | the last batch failed validation (moved to `data/rejected/`) |
+| `InputDrift` | Grafana | consumption / RTE forecast differ from the same weeks of earlier years |
+| `PredictionDrift` | Grafana | the z-score distribution changed (score > 0.2) |
+| `ModelRecallLow` | Grafana | less than 70 % of the weekday holidays of the last year were caught |
+| `FalseAlarmsHigh` | Grafana | more than 1 non-holiday alert day per week (last 28 days) |
+| `AlertLoadHigh` | Grafana | the champion flagged more than 3 of the last 7 days (alert fatigue) |
+| `NewChampion` | Grafana | the champion version changed in the last 30 min (info) |
+
+Drift and quality alerts **never retrain automatically**: a person reads the
+Evidently report (`models/drift/reports/`) and decides (`POST /train`).
+Prometheus alerts: http://localhost:9090/alerts; Grafana alerts: Alerting → Alert rules.
+Alerts are shown in Grafana only; in production they would be sent by email or Slack
+(Alertmanager / Grafana contact point).
+
+To change a dashboard: edit `build_dashboards.py`, run
+`python monitoring/grafana/build_dashboards.py`, commit the script and the JSON
+(a test checks both match), then `docker compose restart grafana`.
 
 ```bash
 # .env from before Phase 4? add the Grafana password once:
@@ -448,14 +483,15 @@ lock file (`statsforecast 2.0.3` requires `scipy < 1.16`); our own code uses
 
 | Path | Content |
 |---|---|
-| `src/data/` | `collect.py` (download), `process.py` (30-min grid, flags, validation), `batches.py` (80/20 split, batches) |
+| `src/data/` | `collect.py` (download), `process.py` (30-min grid, flags, validation), `batches.py` (80/20 split, batches, live RTE data, quality check), `drift.py` (seasonal drift with Evidently) |
 | `src/models/` | `detect.py` (MSTL), `train.py`, `promote.py` (promote or reject), `compare.py` (detectors × K in MLflow), `predict.py` (batch scoring), `tracking.py` (MLflow runs + registry), `pyfunc_model.py` (model for the registry), `events.py` (reference events), `anomaly_days.py`, `model.py` |
 | `src/api/` | FastAPI service |
-| `scripts/` | `split_holdout.py`, `inject_batch.py`, `inspect_alarms.py`, `check_clock_change.py` (clock-change day on fresh RTE data) |
+| `scripts/` | `split_holdout.py`, `inject_batch.py`, `validate_batch.py`, `drift_batch.py`, `inspect_alarms.py`, `check_clock_change.py` (clock-change day on fresh RTE data) |
 | `dags/` | Airflow DAGs (`batch_dag`, `retrain_dag`) and their shared settings |
 | `docker/` | Dockerfiles (trainer, api, airflow), per-service requirements, job scripts, `nginx/default.conf` |
+| `monitoring/` | Prometheus configuration and alert rules, Grafana data source, dashboards and alerts (as code) |
 | `config/` | reference events added by hand |
-| `docs/` | `architecture.md`, `cicd_strategy.md` |
+| `docs/` | `architecture.md`, `cicd_strategy.md`, `monitoring_plan.md`, `ethics_security.md` |
 | `data/*.dvc` | DVC receipts (the data itself is in DVC storage) |
 | `notebooks/` | data exploration |
 | `tests/` | unit tests |
@@ -465,9 +501,9 @@ lock file (`statsforecast 2.0.3` requires `scipy < 1.16`); our own code uses
 - Evaluation is in-sample: thresholds are computed on the data that is scored.
 - Reference events are only holidays and clock changes; heatwaves, cold snaps
   and strikes are not in the list yet.
-- New data is simulated from the held-back 20%; live collection from RTE is a
-  possible next step (RTE revises recent values, so live alerts would be provisional).
+- New data comes from the held-back 20% (replay) or from the RTE API (`BATCH_SOURCE=live`).
+  RTE revises recent real-time values, so live alerts are provisional.
 - DVC storage is DagsHub (hosted). A production setup would use S3-compatible
   object storage (e.g. MinIO locally, or AWS S3) for both DVC and MLflow artifacts.
-- No authentication on the API yet (Phase 3).
+- The job endpoints are protected by an API key; JWT with roles would be the production step.
 - The DAG tasks still run as root inside the trainer container, so files in `models/` belong to root on the host (to fix with the host user id).

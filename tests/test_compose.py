@@ -87,7 +87,8 @@ def test_grafana_provisioning_and_dashboards():
     for path in (MONITORING / "grafana" / "dashboards").glob("*.json"):
         dashboard = json.loads(path.read_text())
         for panel in dashboard["panels"]:
-            assert panel["datasource"]["uid"] == "prometheus", path.name
+            if panel["type"] != "row":
+                assert panel["datasource"]["uid"] == "prometheus", path.name
 
 
 def test_grafana_location_keeps_the_host_header():
@@ -95,3 +96,50 @@ def test_grafana_location_keeps_the_host_header():
     location = block.split("location / {", 1)[1]
     assert "proxy_set_header Host" in location      # not inherited from server{}
     assert "Upgrade" in location
+
+
+# ---------- Dashboards and Grafana alerts (M3) ----------
+DASHBOARDS = sorted((MONITORING / "grafana" / "dashboards").glob("*.json"))
+
+
+def test_dashboards_are_built_from_the_script():
+    """The committed JSON equals what build_dashboards.py produces."""
+    import importlib.util
+    spec = importlib.util.spec_from_file_location(
+        "build_dashboards", MONITORING / "grafana" / "build_dashboards.py")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    assert {p.name for p in DASHBOARDS} == set(module.DASHBOARDS)
+    for path in DASHBOARDS:
+        assert json.loads(path.read_text()) == module.DASHBOARDS[path.name](), path.name
+
+
+def test_dashboards_have_unique_uids_and_panel_ids():
+    uids = [json.loads(p.read_text())["uid"] for p in DASHBOARDS]
+    assert len(uids) == len(set(uids)) == 4
+    for path in DASHBOARDS:
+        ids = [panel["id"] for panel in json.loads(path.read_text())["panels"]]
+        assert len(ids) == len(set(ids)), path.name
+
+
+def test_every_query_panel_has_an_expression():
+    for path in DASHBOARDS:
+        for panel in json.loads(path.read_text())["panels"]:
+            if panel["type"] == "row":
+                continue
+            assert panel["targets"], (path.name, panel["title"])
+            assert all(t["expr"].strip() for t in panel["targets"])
+
+
+def test_grafana_ml_alerts():
+    rules = yaml.safe_load((MONITORING / "grafana" / "provisioning" / "alerting"
+                            / "ml_alerts.yml").read_text())["groups"][0]["rules"]
+    titles = {r["title"] for r in rules}
+    # same names as docs/monitoring_plan.md
+    assert titles == {"DataQualityFailed", "InputDrift", "PredictionDrift", "ModelRecallLow",
+                      "FalseAlarmsHigh", "AlertLoadHigh", "NewChampion"}
+    for rule in rules:
+        steps = {d["refId"]: d for d in rule["data"]}
+        assert rule["condition"] == "C" and set(steps) == {"A", "B", "C"}
+        assert steps["A"]["datasourceUid"] == "prometheus"
+        assert rule["noDataState"] == "OK"     # no metric yet = no alert

@@ -1,56 +1,48 @@
 {
   "uid": "eco2mix-stack",
-  "title": "Stack health",
+  "title": "0 · Stack health",
+  "description": "One-glance check: targets up, champion, data age.",
   "tags": [
     "eco2mix"
   ],
   "schemaVersion": 39,
   "version": 1,
   "editable": false,
-  "refresh": "15s",
+  "refresh": "30s",
   "time": {
     "from": "now-1h",
     "to": "now"
   },
-  "description": "Is every scraped target up? (M2 check; the 3 main dashboards come in M3)",
+  "timezone": "browser",
   "panels": [
     {
       "id": 1,
       "type": "stat",
       "title": "Targets up (per job)",
+      "description": "",
       "datasource": {
         "type": "prometheus",
         "uid": "prometheus"
       },
       "gridPos": {
-        "h": 6,
-        "w": 8,
         "x": 0,
-        "y": 0
+        "y": 0,
+        "w": 8,
+        "h": 6
       },
       "targets": [
         {
           "refId": "A",
-          "expr": "sum by (job) (up)",
-          "legendFormat": "{{job}}",
           "datasource": {
             "type": "prometheus",
             "uid": "prometheus"
-          }
+          },
+          "expr": "sum by (job) (up)",
+          "legendFormat": "{{job}}",
+          "instant": true,
+          "range": false
         }
       ],
-      "options": {
-        "reduceOptions": {
-          "calcs": [
-            "lastNotNull"
-          ],
-          "fields": "",
-          "values": false
-        },
-        "colorMode": "background",
-        "graphMode": "none",
-        "textMode": "value_and_name"
-      },
       "fieldConfig": {
         "defaults": {
           "mappings": [
@@ -59,11 +51,20 @@
               "options": {
                 "0": {
                   "text": "DOWN",
-                  "color": "red"
-                },
-                "1": {
+                  "color": "red",
+                  "index": 0
+                }
+              }
+            },
+            {
+              "type": "range",
+              "options": {
+                "from": 1,
+                "to": 1000,
+                "result": {
                   "text": "UP",
-                  "color": "green"
+                  "color": "green",
+                  "index": 1
                 }
               }
             }
@@ -83,33 +84,53 @@
           }
         },
         "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "background",
+        "graphMode": "none",
+        "textMode": "value_and_name",
+        "justifyMode": "center"
       }
     },
     {
       "id": 2,
       "type": "stat",
       "title": "Champion model",
+      "description": "",
       "datasource": {
         "type": "prometheus",
         "uid": "prometheus"
       },
       "gridPos": {
-        "h": 6,
-        "w": 8,
         "x": 8,
-        "y": 0
+        "y": 0,
+        "w": 8,
+        "h": 6
       },
       "targets": [
         {
           "refId": "A",
-          "expr": "model_info",
-          "legendFormat": "{{version}}",
           "datasource": {
             "type": "prometheus",
             "uid": "prometheus"
-          }
+          },
+          "expr": "model_info",
+          "legendFormat": "{{version}}",
+          "instant": true,
+          "range": false
         }
       ],
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": []
+      },
       "options": {
         "reduceOptions": {
           "calcs": [
@@ -118,40 +139,59 @@
           "fields": "",
           "values": false
         },
-        "colorMode": "background",
+        "colorMode": "none",
         "graphMode": "none",
-        "textMode": "value_and_name"
-      },
-      "fieldConfig": {
-        "defaults": {},
-        "overrides": []
+        "textMode": "name",
+        "justifyMode": "center"
       }
     },
     {
       "id": 3,
       "type": "stat",
       "title": "Data updated (age)",
+      "description": "",
       "datasource": {
         "type": "prometheus",
         "uid": "prometheus"
       },
       "gridPos": {
-        "h": 6,
-        "w": 8,
         "x": 16,
-        "y": 0
+        "y": 0,
+        "w": 8,
+        "h": 6
       },
       "targets": [
         {
           "refId": "A",
-          "expr": "time() - data_updated_timestamp_seconds",
-          "legendFormat": "age",
           "datasource": {
             "type": "prometheus",
             "uid": "prometheus"
-          }
+          },
+          "expr": "time() - data_updated_timestamp_seconds",
+          "legendFormat": "age",
+          "instant": true,
+          "range": false
         }
       ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 129600
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
       "options": {
         "reduceOptions": {
           "calcs": [
@@ -162,14 +202,15 @@
         },
         "colorMode": "background",
         "graphMode": "none",
-        "textMode": "value_and_name"
-      },
-      "fieldConfig": {
-        "defaults": {
-          "unit": "s"
-        },
-        "overrides": []
+        "textMode": "value",
+        "justifyMode": "center"
       }
     }
-  ]
+  ],
+  "templating": {
+    "list": []
+  },
+  "annotations": {
+    "list": []
+  }
 }
