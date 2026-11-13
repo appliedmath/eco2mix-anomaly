@@ -23,22 +23,45 @@ whom, flows, design decisions) · [CI/CD strategy](docs/cicd_strategy.md)
 ## Architecture
 
 ```mermaid
-flowchart LR
-    RTE[(RTE éCO2mix API)] -->|collect + process| DATA[data/ processed + incoming<br/>versioned with DVC]
-    DATA --> TRAINER[trainer<br/>container]
-    TRAINER -->|params, metrics, model files| MLFLOW[mlflow<br/>tracking server :5000]
-    TRAINER -->|model + detections| MODELS[models/]
-    DATA --> BATCH[batch<br/>container]
-    MODELS --> BATCH
-    BATCH -->|new detections| MODELS
-    MODELS --> API[api<br/>FastAPI]
-    DATA --> API
-    USER((user)) --> NGINX[nginx<br/>:8000 :5000 :8080]
+flowchart TB
+    USER["<b>Operator</b><br/>browser"] --> NGINX["<b>NGINX</b><br/>single entry point · API key · rate limit"]
+
+    subgraph SERVING["Serving"]
+        APP["<b>Streamlit</b><br/>operator app"] -->|HTTP| API["<b>FastAPI</b><br/>results · /train · /predict · /metrics"]
+    end
+
+    subgraph ORCH["Orchestration and training"]
+        AIRFLOW["<b>Airflow</b><br/>batch_dag (nightly) · retrain_dag"] -->|DockerOperator| TRAINER["<b>trainer container</b><br/>inject · validate · predict · drift · train"]
+        TRAINER -->|runs · gate| MLFLOW["<b>MLflow</b><br/>tracking · registry @champion"]
+    end
+
+    subgraph MON["Monitoring"]
+        PROM["<b>Prometheus</b><br/>+ node-exporter · 2 system alerts"] --> GRAFANA["<b>Grafana</b><br/>4 dashboards · 7 ML alerts"]
+    end
+
+    RTE["<b>RTE éCO2mix</b><br/>live data"] --> TRAINER
+    TRAINER --> FILES["<b>data/ · models/</b><br/>latest.json · DVC → DagsHub"]
+
+    NGINX --> APP
     NGINX --> API
-    NGINX --> MLFLOW
-    NGINX --> AIRFLOW[airflow<br/>webserver + scheduler]
-    API -->|start DAG runs| AIRFLOW
-    AIRFLOW -->|DockerOperator| TRAINER
+    API -->|start runs| AIRFLOW
+    FILES -.->|reads| API
+    MLFLOW -.->|champion| API
+    PROM -.->|scrapes /metrics| API
+
+    classDef serve fill:#e3f2fd,stroke:#64b5f6,color:#0d1b2a
+    classDef orch fill:#e8f5e9,stroke:#81c784,color:#0d1b2a
+    classDef mon fill:#fff3e0,stroke:#ffb74d,color:#0d1b2a
+    classDef store fill:#fffde7,stroke:#fdd835,color:#0d1b2a
+    classDef ext fill:#ffffff,stroke:#90a4ae,color:#0d1b2a
+    class NGINX,APP,API serve
+    class AIRFLOW,TRAINER,MLFLOW orch
+    class PROM,GRAFANA mon
+    class FILES store
+    class USER,RTE ext
+    style SERVING fill:#f7fbff,stroke:#90caf9,stroke-dasharray:5 5
+    style ORCH fill:#f6fbf6,stroke:#a5d6a7,stroke-dasharray:5 5
+    style MON fill:#fffaf3,stroke:#ffcc80,stroke-dasharray:5 5
 ```
 
 | Service | What it does | Runs |
