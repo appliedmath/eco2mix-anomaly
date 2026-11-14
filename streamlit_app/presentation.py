@@ -19,11 +19,12 @@ API_URL = os.environ.get("API_URL", "http://localhost:8000").rstrip("/")
 TOOLS = {
     "GitHub": "https://github.com/appliedmath/eco2mix-anomaly",
     "DagsHub": "https://dagshub.com/appliedmath/eco2mix-anomaly",
-    "MLflow": "http://localhost:5000",
+    # deep links: each button opens the exact page we talk about
+    "MLflow": "http://localhost:5000/#/models/grid-anomaly-detector",
     "API docs": "http://localhost:8000/docs",
-    "Airflow": "http://localhost:8080",
-    "Grafana": "http://localhost:3000",
-    "Prometheus": "http://localhost:9090",
+    "Airflow": "http://localhost:8080/dags/batch_dag/grid",
+    "Grafana": "http://localhost:3000/d/eco2mix-stack",
+    "Prometheus": "http://localhost:9090/alerts",
     "Operator app": "http://localhost:8501",
 }
 
@@ -240,7 +241,7 @@ def model_mlflow():
 
 
 def api():
-    header("API and NGINX", "Mina", 2, ["API docs"])
+    header("API, security and ethics", "Mina", 2, ["API docs"])
     flow(["client · operator app", "NGINX: rate limit", "FastAPI: API key", "Airflow: 202 + run id"], "teal")
     boxes([
         ("Read (open)", ["/health · /model-info", "/anomalies · /series", "/anomaly-day",
@@ -250,14 +251,27 @@ def api():
         ("Clear answers", ["401 no key · 403 wrong key", "429 too many requests", "409 DAG paused · 503 Airflow down",
                            "/metrics closed from outside"], "orange"),
     ])
-    takeaway("Everything that changes the system needs the key, and the API never waits for a training.")
+    st.write("")
+    boxes([
+        ("Security", ["one door: NGINX", "admin tools only on this machine", "secrets only in .env"], "red"),
+        ("Data", ["public RTE open data", "national total, no personal data", "GDPR: nothing personal to protect"],
+         "teal"),
+        ("Ethics", ["an anomaly is an alert for a person", "the system never acts on the grid",
+                    "limits documented (no weather, national only)"], "green"),
+    ])
+    takeaway("Detecting is not deciding: the key protects every change, and a person decides.")
     with st.expander("Speaker notes"):
         st.markdown(
             "In Swagger: GET /anomaly-day for 11 November 2026 (Armistice Day) → anomaly. "
             "Then POST /train without the key → 401: the key protects everything that changes the system. "
             "Don't show the key on screen. GET /champion: the registry's champion and the version the API "
             "serves (in_sync). The key is compared in constant time; secrets only in .env (git-ignored). "
-            "Rate limit: 6 job requests per minute per client. The operator app uses the same API."
+            "Rate limit: 6 job requests per minute per client. The operator app uses the same API.\n\n"
+            "Security and ethics in 20 seconds: Grafana has a login, Prometheus and the operator app are only "
+            "reachable from this machine. The data is public and aggregated for the whole of France, so there is "
+            "no personal data. The system only informs: drift never retrains by itself, and a bad batch never "
+            "reaches the model. In production: HTTPS, users with roles, a secret store "
+            "(details in docs/ethics_security.md)."
         )
 
 
@@ -454,7 +468,7 @@ def thanks():
 
 pages = [st.Page(f, title=t, url_path=f.__name__) for f, t in [
     (intro, "1. Introduction"), (data, "2. Data"), (architecture, "3. Architecture"),
-    (github_ci, "4. Code, CI, DVC"), (model_mlflow, "5. Model & MLflow"), (api, "6. API & NGINX"),
+    (github_ci, "4. Code, CI, DVC"), (model_mlflow, "5. Model & MLflow"), (api, "6. API, security, ethics"),
     (airflow, "7. Airflow"), (drift, "8. Quality & drift"), (monitoring, "9. Monitoring"),
     (live_demo, "10. Live demo"), (scaling, "11. Scaling"), (future, "12. Future work"),
     (thanks, "13. Thank you"),
