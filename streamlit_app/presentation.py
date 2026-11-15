@@ -328,7 +328,7 @@ def live_demo():
     header("Live demo: the operator app", "Shari", 2, ["Operator app"])
     flow(["operator app", "NGINX", "API", "Airflow / Trainer / MLflow"], "green")
     boxes([
-        ("1 · User tab", ["consumption, expected line, anomalies", "was this day an anomaly? (14 July 2026)",
+        ("1 · User tab", ["consumption, expected line, anomalies", "was this day an anomaly? (4 Nov 2026)",
                           "the model in use"], "blue"),
         ("2 · Admin tab", ["Retrain the model", "API key → Airflow → trainer → gate",
                            "the run status comes back"], "purple"),
