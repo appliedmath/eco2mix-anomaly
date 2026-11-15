@@ -398,13 +398,11 @@ def future():
     takeaway("From a reliable prototype to a useful service.")
     with st.expander("Speaker notes"):
         st.markdown(
-            "Kilyan: the defense is about choices: what we built and why, what we would do with more time, "
-            "and what the project looks like in 5 years. Shari: data-science tab (weather: an idea to test, "
+            "Shari: data-science tab (weather: an idea to test, "
             "not a sure win). Mina: MLOps tab. Pick 2 rows per tab, not all.\n\n"
             "Regional data, if asked why not now: \"We first wanted the whole MLOps loop working on one series. "
             "Going regional multiplies models, runs and dashboards by 12, so it's a scaling step we'd do next, "
-            "with dynamic task mapping in Airflow.\"\n\n"
-            "End with: a project is never finished, it is maintained."
+            "with dynamic task mapping in Airflow.\""
         )
 
 
