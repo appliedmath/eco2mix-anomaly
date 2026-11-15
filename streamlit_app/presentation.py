@@ -164,9 +164,6 @@ def data():
         ("Two modes", ["replay: repeatable demo", "live: the RTE API every night"], "green"),
     ])
     takeaway("Clean, versioned data first: every later step can trust it.")
-    with st.expander("Speaker notes"):
-        st.markdown("The consolidated dataset ends on 31 August; after that only real-time data exists. "
-                    "That detail caused the bug we found with the first nightly live run (page 7).")
 
 
 def architecture():
@@ -239,9 +236,6 @@ def model_mlflow():
             "live model = alias <b>@champion</b>", "rollback = move the alias"], "blue")])
     screenshot("mlflow_compare.png", "MLflow: the detector comparison")
     takeaway("A new model goes live only if it is not worse, and going back is one alias move.")
-    with st.expander("Speaker notes"):
-        st.markdown("Show in MLflow: the champion version, and a run with decision = rejected (k = 2): "
-                    "logged with the reason, but no registry version, so a worse model cannot go live.")
 
 
 def api():
@@ -293,14 +287,11 @@ def airflow():
     cards([
         ("5 Nov", "first live runs", "real RTE data every night", "green"),
         ("8 Nov", "one red run", "bug found, test added, fixed", "red"),
+        ("296", "days caught up", "in one run, after 2 days off", "purple"),
         ("11 Nov", "Armistice Day", "flagged the same night", "orange"),
     ])
     screenshot("airflow_grid.png", "Airflow: batch_dag runs, the red run of 8 November")
     takeaway("It runs by itself every night, and bad input stops before it reaches the model.")
-    with st.expander("Speaker notes"):
-        st.markdown("Each task runs in a fresh container from the trainer image (DockerOperator). "
-                    "In Airflow: Grid view, green nightly runs; the red run of 8 November with the orange "
-                    "upstream_failed tasks: bad input stops the pipeline, nothing wrong goes further.")
 
 
 def question(col, ask, answer, value, sub, color) -> None:
@@ -323,15 +314,15 @@ def drift():
     question(c3, "3 · Does the model react differently?", "prediction drift: the z-scores, threshold 0.2",
              "0.231", "10 Nov: early warning", "purple")
     question(c4, "4 · Is the model still right?", "no labels: rolling recall on weekday holidays, "
-             "false alarms per week", "1.0 · 0.25", "9 / 9 holidays · no real problem", "green")
+             "false alarms per week", "1.0 · 0.25", "9 / 9 holidays · 1 false alarm in 4 weeks", "green")
+    st.write("")
+    screenshot("evidently_zscore.png", "Evidently, last night: z-scores of the week (red) "
+               "against the normal range of earlier years (green band); the dip is Armistice Day")
     takeaway("The world changed, the model did not break: drift alerts a person, it never retrains.")
     reports = sorted(Path("models/drift/reports").glob("drift_*.html"))
     if reports:
         with st.expander(f"Evidently report: {reports[-1].stem.removeprefix('drift_')} (latest)"):
             components.html(reports[-1].read_text(), height=900, scrolling=True)
-    with st.expander("Speaker notes"):
-        st.markdown("Open the Evidently report of 10 November: reference left, current right, consumption moved right. "
-                    "The z-score threshold is also passed to Evidently, so the report agrees with the status file.")
 
 
 def monitoring():
@@ -392,9 +383,6 @@ def live_demo():
     with st.expander("Backup screenshots"):
         screenshot("operator_app_chart.png", "Operator app: the chart")
         screenshot("operator_app_day.png", "Operator app: was this day an anomaly?")
-    with st.expander("Speaker notes"):
-        st.markdown("On the 14-day chart: around 2-3 November the whole curve jumps up and the expected line "
-                    "follows it, so no anomaly, but input drift against earlier years.")
 
 
 def scaling():
@@ -429,15 +417,42 @@ def scaling():
         )
 
 
+def thanks():
+    photo = ASSETS / "thanks.jpg"
+    background = "linear-gradient(135deg, #1f6feb, #8250df)"
+    if photo.exists():
+        data = base64.b64encode(photo.read_bytes()).decode()
+        background = (f"linear-gradient(rgba(10, 20, 40, 0.35), rgba(10, 20, 40, 0.75)), "
+                      f"url(data:image/jpeg;base64,{data}) center / cover")
+    html(f'<div style="background:{background}; border-radius: 22px; min-height: 80vh; display: flex; '
+         'flex-direction: column; justify-content: flex-end; padding: 48px 56px; color: #ffffff;">'
+         '<div style="font-size: 4.2rem; font-weight: 800; line-height: 1.05;">Thank you<br>for your attention</div>'
+         '<div style="font-size: 1.3rem; margin-top: 18px; opacity: 0.9;">'
+         "⚡ Fatemeh (Shari) Tayebi & Mahboubeh (Mina) Nadaf · eco2mix-anomaly</div></div>")
+    if photo.exists():
+        st.caption("Photo: high-voltage line between Avelin and Tourmignies (Nord, France), "
+                   "Pierre André Leclercq, CC BY-SA 4.0, Wikimedia Commons")
+
+
 def future():
+    if st.session_state.get("show_thanks"):
+        thanks()
+        st.button("← Back", on_click=lambda: st.session_state.update(show_thanks=False))
+        return
     header("Future work", "Mina & Shari", 2)
     ds, ops = st.tabs(["With more time: data science", "With more time: MLOps"])
     with ds:
-        cards([
-            ("🌡️", "Weather data", "+ closer expected line · ? test it through the gate", "orange"),
-            ("🗺️", "Regional data", "+ where and why · ? 12 series, GDPR closer", "teal"),
-            ("🏷️", "Operator feedback", "+ real labels · ? operators' time", "green"),
-            ("🧠", "Other models", "+ maybe better · ? less explainable", "purple"),
+        boxes([
+            ("🌡️ Weather data", ["Benefit: the expected line follows the cold", "Challenge: test it: the same gate decides"],
+             "orange"),
+            ("🗺️ Regional data", ["Benefit: where and why an anomaly happens", "Challenge: 12 series; GDPR comes closer"],
+             "teal"),
+        ])
+        st.write("")
+        boxes([
+            ("🏷️ Operator feedback", ["Benefit: real labels, a real recall", "Challenge: operators' time, partly subjective"],
+             "green"),
+            ("🧠 Other models", ["Benefit: maybe better recall", "Challenge: less explainable, more compute"], "purple"),
         ])
     with ops:
         st.markdown(
@@ -458,33 +473,10 @@ def future():
             "complexity and cost; Airflow and MLflow on Kubernetes |"
         )
     takeaway("From a reliable prototype to a useful service.")
-    with st.expander("Speaker notes"):
-        st.markdown(
-            "Kilyan: the defense is about choices: what we built and why, what we would do with more time, "
-            "and what the project looks like in 5 years. Shari: data-science tab (weather: an idea to test, "
-            "not a sure win). Mina: MLOps tab. Pick 2 rows per tab, not all.\n\n"
-            "Regional data, if asked why not now: \"We first wanted the whole MLOps loop working on one series. "
-            "Going regional multiplies models, runs and dashboards by 12, so it's a scaling step we'd do next, "
-            "with dynamic task mapping in Airflow.\"\n\n"
-            "End with: a project is never finished, it is maintained."
-        )
-
-
-def thanks():
-    photo = ASSETS / "thanks.jpg"
-    background = "linear-gradient(135deg, #1f6feb, #8250df)"
-    if photo.exists():
-        data = base64.b64encode(photo.read_bytes()).decode()
-        background = (f"linear-gradient(rgba(10, 20, 40, 0.35), rgba(10, 20, 40, 0.75)), "
-                      f"url(data:image/jpeg;base64,{data}) center / cover")
-    html(f'<div style="background:{background}; border-radius: 22px; min-height: 78vh; display: flex; '
-         'flex-direction: column; justify-content: flex-end; padding: 48px 56px; color: #ffffff;">'
-         '<div style="font-size: 4.2rem; font-weight: 800; line-height: 1.05;">Thank you<br>for your attention</div>'
-         '<div style="font-size: 1.3rem; margin-top: 18px; opacity: 0.9;">'
-         "⚡ Fatemeh (Shari) Tayebi & Mahboubeh (Mina) Nadaf · eco2mix-anomaly</div></div>")
-    if photo.exists():
-        st.caption("Photo: high-voltage line between Avelin and Tourmignies (Nord, France), "
-                   "Pierre André Leclercq, CC BY-SA 4.0, Wikimedia Commons")
+    st.write("")
+    _, corner = st.columns([5, 1])
+    corner.button("Thank you →", type="primary", width="stretch",
+                  on_click=lambda: st.session_state.update(show_thanks=True))
 
 
 pages = [st.Page(f, title=t, url_path=f.__name__) for f, t in [
@@ -492,6 +484,5 @@ pages = [st.Page(f, title=t, url_path=f.__name__) for f, t in [
     (github_ci, "4. Code, CI, DVC"), (model_mlflow, "5. Model & MLflow"), (api, "6. API & NGINX"),
     (airflow, "7. Airflow"), (drift, "8. Quality & drift"), (monitoring, "9. Monitoring"),
     (live_demo, "10. Live demo"), (scaling, "11. Scaling"), (future, "12. Future work"),
-    (thanks, "13. Thank you"),
 ]]
 st.navigation(pages).run()
