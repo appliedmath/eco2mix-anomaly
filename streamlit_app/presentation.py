@@ -153,8 +153,8 @@ def data():
     header("Data", "Shari", 1, ["DagsHub"])
     cards([
         ("30 min", "national consumption", "RTE éCO2mix, in UTC", "blue"),
-        ("≈ 67,600", "half-hours", "Jan 2023 → Nov 2026", "purple"),
-        ("49", "reference events", "holidays, clock changes", "orange"),
+        ("≈ 67,900", "half-hours", "Jan 2023 → Nov 2026", "purple"),
+        ("50", "reference events", "holidays, clock changes", "orange"),
         ("80 / 20", "train / replay", "20 % arrive as new days", "green"),
     ])
     st.write("")
@@ -206,17 +206,17 @@ def model_mlflow():
           "|z| > 4 → anomaly"], "purple")
     cards([
         ("K = 4", "threshold", "chosen from K = 2 to 6 in MLflow", "purple"),
-        ("0.72", "recall", "on the 49 reference events", "green"),
-        ("0.44", "false alarms / week", "less than one every two weeks", "orange"),
+        ("0.72", "recall", "on the 50 reference events", "green"),
+        ("0.45", "false alarms / week", "less than one every two weeks", "orange"),
     ])
     st.write("")
     left, right = st.columns([3, 2])
     with left:
         st.markdown(
-            "**Three detectors, same events, K = 4** (MLflow run *detector-comparison*)\n\n"
+            "**Three detectors, same events, K = 4** (champion, version 21)\n\n"
             "| Detector | Recall | False alarms / week |\n|---|---|---|\n"
-            "| **MSTL (ours)** | **0.72** | **0.44** |\n"
-            "| Same half-hour last week | 0.20 | 0.45 |\n"
+            "| **MSTL (ours)** | **0.72** | **0.45** |\n"
+            "| Same half-hour last week | 0.20 | 0.44 |\n"
             "| RTE day-ahead forecast | 0.08 | 0.11 |"
         )
     with right:
@@ -289,16 +289,13 @@ def drift():
     st.write("")
     c3, c4 = st.columns(2)
     question(c3, "3 · Does the model react differently?", "prediction drift: the z-scores, threshold 0.2",
-             "0.231", "10 Nov: early warning", "purple")
+             "0.49", "latest run, 14 Nov", "purple")
     question(c4, "4 · Is the model still right?", "no labels: rolling recall on weekday holidays, "
-             "false alarms per week", "1.0 · 0.25", "9 / 9 holidays · 1 false alarm in 4 weeks", "green")
-    st.write("")
-    screenshot("evidently_zscore.png", "Evidently, last night: z-scores of the week (red) "
-               "against the normal range of earlier years (green band); the dip is Armistice Day")
+             "false alarms per week", "1.0 · 0.75", "9 / 9 holidays · 3 alarm days in 4 weeks", "green")
     takeaway("The world changed, the model did not break: drift alerts a person, it never retrains.")
     reports = sorted(Path("models/drift/reports").glob("drift_*.html"))
     if reports:
-        with st.expander(f"Evidently report: {reports[-1].stem.removeprefix('drift_')} (latest)"):
+        with st.expander(f"📊 Open the Evidently report of the last run ({reports[-1].stem.removeprefix('drift_')})"):
             components.html(reports[-1].read_text(), height=900, scrolling=True)
 
 
@@ -329,7 +326,7 @@ def monitoring():
 
 def live_demo():
     header("Live demo: the operator app", "Shari", 2, ["Operator app"])
-    flow(["operator app", "NGINX", "API", "Airflow · MLflow"], "green")
+    flow(["operator app", "NGINX", "API", "Airflow / Trainer / MLflow"], "green")
     boxes([
         ("1 · User tab", ["consumption, expected line, anomalies", "was this day an anomaly? (14 July 2026)",
                           "the model in use"], "blue"),
@@ -337,9 +334,6 @@ def live_demo():
                            "the run status comes back"], "purple"),
     ])
     takeaway("The operator only talks to the API: one door, one key.")
-    with st.expander("Backup screenshots"):
-        screenshot("operator_app_chart.png", "Operator app: the chart")
-        screenshot("operator_app_day.png", "Operator app: was this day an anomaly?")
 
 
 def scaling():
