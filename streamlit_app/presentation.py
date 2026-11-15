@@ -446,7 +446,7 @@ def thanks():
          'flex-direction: column; justify-content: flex-end; padding: 48px 56px; color: #ffffff;">'
          '<div style="font-size: 4.2rem; font-weight: 800; line-height: 1.05;">Thank you<br>for your attention</div>'
          '<div style="font-size: 1.3rem; margin-top: 18px; opacity: 0.9;">'
-         "⚡ Fatemeh (Shari) Tayebi & Mahboubeh (Mina) Nadaf · eco2mix-anomaly</div></div>")
+         "Fatemeh (Shari) Tayebi & Mahboubeh (Mina) Nadaf · eco2mix-anomaly</div></div>")
     if photo.exists():
         st.caption("Photo: high-voltage line between Avelin and Tourmignies (Nord, France), "
                    "Pierre André Leclercq, CC BY-SA 4.0, Wikimedia Commons")
