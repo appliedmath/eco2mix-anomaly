@@ -147,7 +147,10 @@ def intro():
                           legend={"orientation": "h", "y": -0.15})
         st.plotly_chart(fig, width="stretch")
     except (requests.RequestException, KeyError, ValueError):
-        st.info("Start the stack to see the live chart (docker compose up -d).")
+        if (ASSETS / "intro_chart.png").exists():
+            screenshot("intro_chart.png", "5-11 November 2026 (saved from our API); the live chart needs the stack")
+        else:
+            st.info("Start the stack to see the live chart (docker compose up -d).")
     flow(["RTE data", "quality check", "train", "version", "serve", "monitor"])
     cards([
         ("1", "Data & model", "scoping, MSTL", "blue"),
@@ -174,6 +177,7 @@ def data():
         ("Two modes", ["replay: repeatable demo", "live: the RTE API every night"], "green"),
     ])
     takeaway("Clean, versioned data first: every later step can trust it.")
+    backup(("dagshub_data.png", "DagsHub: the data versioned with DVC"))
 
 
 def architecture():
@@ -207,6 +211,8 @@ def github_ci():
                                  "dvc pull: the same data for everyone"], "teal"),
     ])
     takeaway("Nothing reaches main without green CI and a second pair of eyes.")
+    backup(("github_pr_checks.png", "GitHub: a pull request with green CI (test, docker-build) and an approval"),
+           ("github_actions.png", "GitHub Actions: CI runs on every pull request"))
 
 
 def model_mlflow():
@@ -256,6 +262,8 @@ def api():
                     "limits documented (no weather, national only)"], "green"),
     ])
     takeaway("Detecting is not deciding: the key protects every change, and a person decides.")
+    backup(("swagger_anomaly_day.png", "Swagger: GET /anomaly-day for 11 November 2026, was_anomaly true"),
+           ("swagger_train_401.png", "Swagger: POST /train without the key, 401"))
 
 
 def airflow():
@@ -329,9 +337,10 @@ def monitoring():
                                 "switched on → alert cleared by itself"], "green"),
     ])
     takeaway("If something breaks or changes, a person knows; drift alone never retrains the model.")
-    with st.expander("Backup screenshots"):
-        screenshot("grafana_alerts.png", "Grafana: the 9 alert rules, provisioned from files")
-        screenshot("grafana_model_data.png", "Grafana: model & data dashboard")
+    backup(("grafana_stack_health.png", "Grafana: stack health (targets, champion, data age)"),
+           ("prometheus_nonewdata.png", "Prometheus: NoNewData firing while batch_dag is paused"),
+           ("grafana_model_data.png", "Grafana: model & data dashboard"),
+           ("grafana_alerts.png", "Grafana: the 9 alert rules, provisioned from files"))
 
 
 def live_demo():
@@ -357,8 +366,7 @@ def scaling():
                                    "a deleted pod comes back at once"], "purple"),
     ])
     takeaway("The API can grow with its users; the rest moves to Kubernetes only when needed (future work).")
-    with st.expander("Backup screenshot"):
-        screenshot("k8s_pods.png", "kubectl: 3 pods, then self-healing after a delete")
+    backup(("k8s_pods.png", "kubectl: 3 pods, then self-healing after a delete"))
 
 
 def thanks():
