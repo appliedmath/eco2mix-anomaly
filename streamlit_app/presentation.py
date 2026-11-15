@@ -171,13 +171,17 @@ def data():
 
 
 def architecture():
-    header("Architecture", "Mina", 2, ["GitHub"])
-    lead("One night, from left to right: RTE data in, scored half-hours and alerts out.")
-    flow(["RTE", "Airflow", "trainer", "MLflow · models/", "API", "Prometheus · Grafana"], "blue")
-    # rendered from streamlit_app/assets/architecture.dot (command inside the file)
-    st.image(str(ASSETS / "architecture.png"), width=900)
+    # this page only: less empty space at the top, so diagram, boxes and the closing sentence fit on one screen
+    html("<style>.block-container {padding-top: 1.2rem !important; padding-bottom: 1rem !important;}"
+         " h1 {padding-bottom: 0.2rem !important;}"
+         " .e2m-card {padding: 12px 16px !important;} .e2m-title {font-size: 1.15rem !important;}"
+         " .e2m-take {margin-top: 14px !important; padding: 12px 22px !important;}</style>")
+    header("Architecture", "Mina", 2)
+    st.caption("One night, from left to right: RTE data in, scored half-hours and alerts out.")
+    # left to right, one colour per column; rendered from streamlit_app/assets/architecture.dot
+    st.image(str(ASSETS / "architecture.png"), width="stretch")
     boxes([
-        ("One trainer image", ["every job: inject, validate,", "predict, drift, train", "same pinned code"], "purple"),
+        ("One trainer image", ["every job, same pinned code", "inject · validate · predict · drift · train"], "purple"),
         ("The API never trains", ["serves the champion's results", "starts jobs in Airflow"], "teal"),
         ("One door: NGINX", ["only service with ports", "API key, rate limits"], "blue"),
         ("Everything as code", ["DAGs, alerts, dashboards", "reviewed in pull requests"], "green"),
