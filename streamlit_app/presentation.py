@@ -281,7 +281,7 @@ def airflow():
     cards([
         ("5 Nov", "first live runs", "real RTE data every night", "green"),
         ("8 Nov", "one red run", "bug found, test added, fixed", "red"),
-        ("296", "days caught up", "in one run, after 2 days off", "purple"),
+        ("296", "days caught up", "in one run, when we switched to live data", "purple"),
         ("11 Nov", "Armistice Day", "flagged the same night", "orange"),
     ])
     backup(("airflow_grid.png", "Airflow: batch_dag runs, the red run of 8 November"))
