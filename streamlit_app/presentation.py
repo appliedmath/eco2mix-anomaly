@@ -183,17 +183,6 @@ def architecture():
         ("Everything as code", ["DAGs, alerts, dashboards", "reviewed in pull requests"], "green"),
     ])
     takeaway("Simple on purpose: one machine, one door, one image for every job.")
-    with st.expander("Speaker notes"):
-        st.markdown(
-            "Follow one night from left to right: RTE → Airflow starts the trainer container → "
-            "inject, validate, predict, drift → results in data/ and models/ → the API serves them → "
-            "Prometheus scrapes the API → Grafana shows it and raises alerts. "
-            "Training: same trainer image, logs to MLflow; the gate decides if the new model "
-            "becomes @champion. Kept simple on purpose: one machine, Docker Compose; "
-            "Kubernetes only for the serving layer (page 11). "
-            "NGINX also publishes MLflow (:5000), Airflow (:8080) and Grafana (:3000); "
-            "Prometheus and the operator app only on 127.0.0.1."
-        )
 
 
 def github_ci():
@@ -260,19 +249,6 @@ def api():
                     "limits documented (no weather, national only)"], "green"),
     ])
     takeaway("Detecting is not deciding: the key protects every change, and a person decides.")
-    with st.expander("Speaker notes"):
-        st.markdown(
-            "In Swagger: GET /anomaly-day for 11 November 2026 (Armistice Day) → anomaly. "
-            "Then POST /train without the key → 401: the key protects everything that changes the system. "
-            "Don't show the key on screen. GET /champion: the registry's champion and the version the API "
-            "serves (in_sync). The key is compared in constant time; secrets only in .env (git-ignored). "
-            "Rate limit: 6 job requests per minute per client. The operator app uses the same API.\n\n"
-            "Security and ethics in 20 seconds: Grafana has a login, Prometheus and the operator app are only "
-            "reachable from this machine. The data is public and aggregated for the whole of France, so there is "
-            "no personal data. The system only informs: drift never retrains by itself, and a bad batch never "
-            "reaches the model. In production: HTTPS, users with roles, a secret store "
-            "(details in docs/ethics_security.md)."
-        )
 
 
 def airflow():
@@ -354,19 +330,6 @@ def monitoring():
     with st.expander("Backup screenshots"):
         screenshot("grafana_alerts.png", "Grafana: the 9 alert rules, provisioned from files")
         screenshot("grafana_model_data.png", "Grafana: model & data dashboard")
-    with st.expander("Speaker notes"):
-        st.markdown(
-            "**Key sentence:** Mid-January 2026: input and prediction drift fire, but rolling recall is still 100 % "
-            "and our model raised 0 alert days, against 5 for the naive baseline. The world changed, "
-            "the model is fine, so we alert and don't retrain.\n\n"
-            "Keep traffic running in a terminal before this page "
-            "(`while true; do curl -s localhost:8000/health >/dev/null; sleep 2; done`). "
-            "Open Grafana: Stack health → API performance → Model & data (drift in orange = alert only) → "
-            "Alerting → Alert rules (9 rules, 'Provisioned'). "
-            "The API exports request metrics and the ML state, read from the files at each scrape. "
-            "If asked about notifications: no SMTP/Slack on purpose (no secrets in the repo); "
-            "next step: a contact point (future work)."
-        )
 
 
 def live_demo():
@@ -398,14 +361,6 @@ def scaling():
     takeaway("The API can grow with its users; the rest moves to Kubernetes only when needed (future work).")
     with st.expander("Backup screenshot"):
         screenshot("k8s_pods.png", "kubectl: 3 pods, then self-healing after a delete")
-    with st.expander("Speaker notes"):
-        st.markdown(
-            "**Key sentence (with the screenshot):** We delete a pod and Kubernetes immediately starts a new one. "
-            "It shows 0/1 until the readiness probe on /health passes, so no request goes to a pod that "
-            "isn't ready. Then we scale to 5 with one command.\n\n"
-            "Why only the API: it is stateless and the part that grows with users; the jobs run once a night, "
-            "so one machine is enough for them. Service on port 8001, ConfigMap, Secret created from .env."
-        )
 
 
 def future():
