@@ -64,6 +64,15 @@ def screenshot(name: str, caption: str) -> None:
         st.image(str(path), caption=caption, width="stretch")
 
 
+def backup(*shots) -> None:
+    """Folded backup screenshots of a live demo: (file in assets/, caption). Only files that exist are shown."""
+    shots = [(name, caption) for name, caption in shots if (ASSETS / name).exists()]
+    if shots:
+        with st.expander("🖼️ Backup screenshots"):
+            for name, caption in shots:
+                st.image(str(ASSETS / name), caption=caption, width="stretch")
+
+
 def header(title: str, owner: str, minutes: int, tools=()) -> None:
     st.title(title)
     st.caption(f"{owner} · {minutes} min")
@@ -223,7 +232,7 @@ def model_mlflow():
         boxes([("Promote-or-reject gate", [
             "recall not lower", "false alarms at most +10 %",
             "live model = alias <b>@champion</b>", "rollback = move the alias"], "blue")])
-    screenshot("mlflow_compare.png", "MLflow: the detector comparison")
+    backup(("mlflow_compare.png", "MLflow: the detector comparison, 15 runs"))
     takeaway("A new model goes live only if it is not worse, and going back is one alias move.")
 
 
@@ -267,7 +276,7 @@ def airflow():
         ("296", "days caught up", "in one run, after 2 days off", "purple"),
         ("11 Nov", "Armistice Day", "flagged the same night", "orange"),
     ])
-    screenshot("airflow_grid.png", "Airflow: batch_dag runs, the red run of 8 November")
+    backup(("airflow_grid.png", "Airflow: batch_dag runs, the red run of 8 November"))
     takeaway("It runs by itself every night, and bad input stops before it reaches the model.")
 
 
@@ -293,6 +302,7 @@ def drift():
     question(c4, "4 · Is the model still right?", "no labels: rolling recall on weekday holidays, "
              "false alarms per week", "1.0 · 0.75", "9 / 9 holidays · 3 alarm days in 4 weeks", "green")
     takeaway("The world changed, the model did not break: drift alerts a person, it never retrains.")
+    backup(("evidently_zscore.png", "Evidently, 14 November: z-scores of the week; the dip is Armistice Day"))
     reports = sorted(Path("models/drift/reports").glob("drift_*.html"))
     if reports:
         with st.expander(f"📊 Open the Evidently report of the last run ({reports[-1].stem.removeprefix('drift_')})"):
@@ -334,6 +344,8 @@ def live_demo():
                            "the run status comes back"], "purple"),
     ])
     takeaway("The operator only talks to the API: one door, one key.")
+    backup(("operator_app_chart.png", "Operator app: the last 14 days"),
+           ("operator_app_day.png", "Operator app: was the 4th of November an anomaly?"))
 
 
 def scaling():
