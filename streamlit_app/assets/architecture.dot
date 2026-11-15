@@ -1,0 +1,58 @@
+// Architecture diagram of the presentation (page 3): left to right, one colour per column.
+// Regenerate the PNG with:
+//   dot -Tpng -Gdpi=200 streamlit_app/assets/architecture.dot -o streamlit_app/assets/architecture.png
+digraph {
+  rankdir=LR; newrank=true; nodesep=0.35; ranksep=0.7; splines=spline;
+  node [shape=box, style="rounded,filled", fontname=Helvetica, fontsize=13, margin="0.18,0.08", penwidth=1.2, width=2.3];
+  edge [fontname=Helvetica, fontsize=10, color="#607d8b", fontcolor="#455a64", arrowsize=0.7];
+
+  subgraph cluster_src { label=<<b>1 · Data in</b>>; fontname=Helvetica; fontsize=13; fontcolor="#455a64";
+    style="rounded,filled"; fillcolor="#eceff1"; color="#b0bec5"; margin=12;
+    node [fillcolor="#ffffff", color="#90a4ae"];
+    rte [label=<<b>RTE éCO2mix</b><br/><font point-size="10">national data, every night</font>>];
+  }
+  subgraph cluster_orch { label=<<b>2 · Orchestrate &amp; train</b>>; fontname=Helvetica; fontsize=13; fontcolor="#2e7d32";
+    style="rounded,filled"; fillcolor="#e8f5e9"; color="#a5d6a7"; margin=12;
+    node [fillcolor="#ffffff", color="#81c784"];
+    airflow [label=<<b>Airflow</b><br/><font point-size="10">batch_dag nightly · retrain_dag</font>>];
+    trainer [label=<<b>trainer container</b><br/><font point-size="10">inject · validate · predict<br/>drift · train</font>>];
+  }
+  subgraph cluster_store { label=<<b>3 · Version &amp; store</b>>; fontname=Helvetica; fontsize=13; fontcolor="#6a1b9a";
+    style="rounded,filled"; fillcolor="#f3e5f5"; color="#ce93d8"; margin=12;
+    node [fillcolor="#ffffff", color="#ba68c8"];
+    mlflow [label=<<b>MLflow</b><br/><font point-size="10">runs · registry @champion</font>>];
+    files  [label=<<b>data/ · models/</b><br/><font point-size="10">results · DVC → DagsHub</font>>];
+  }
+  subgraph cluster_serve { label=<<b>4 · Serve</b>>; fontname=Helvetica; fontsize=13; fontcolor="#1565c0";
+    style="rounded,filled"; fillcolor="#e3f2fd"; color="#90caf9"; margin=12;
+    node [fillcolor="#ffffff", color="#64b5f6"];
+    nginx [label=<<b>NGINX</b><br/><font point-size="10">one door · API key · rate limit</font>>];
+    api   [label=<<b>FastAPI</b><br/><font point-size="10">results · /train · /predict<br/>/champion · /metrics</font>>];
+    app   [label=<<b>Streamlit</b><br/><font point-size="10">operator app</font>>];
+  }
+  subgraph cluster_mon { label=<<b>5 · Monitor</b>>; fontname=Helvetica; fontsize=13; fontcolor="#e65100";
+    style="rounded,filled"; fillcolor="#fff3e0"; color="#ffcc80"; margin=12;
+    node [fillcolor="#ffffff", color="#ffb74d"];
+    prom    [label=<<b>Prometheus</b><br/><font point-size="10">scrape 15 s · 2 system alerts</font>>];
+    grafana [label=<<b>Grafana</b><br/><font point-size="10">4 dashboards · 7 ML alerts</font>>];
+  }
+  user [label=<<b>Operator</b><br/><font point-size="10">operator app · Grafana · API docs</font>>, fillcolor="#ffffff", color="#90a4ae", width=2.3];
+
+  rte -> trainer;
+  airflow -> trainer [label="DockerOperator"];
+  trainer -> mlflow [label="runs · gate"];
+  trainer -> files;
+  files -> api [label="reads"];
+  mlflow -> api [label="champion", style=dashed];
+  api -> airflow [label="start runs", style=dashed, constraint=false];
+  nginx -> api; api -> app [dir=back, style=dashed];
+  api -> prom [label="scrapes /metrics", dir=back];
+  prom -> grafana;
+  nginx -> user [dir=back, label="browser"];
+  prom -> user [style=invis];
+
+  { rank=same; airflow; trainer; }
+  { rank=same; mlflow; files; }
+  { rank=same; api; nginx; app; }
+  { rank=same; prom; grafana; user; }
+}
