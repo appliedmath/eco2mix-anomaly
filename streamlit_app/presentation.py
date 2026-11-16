@@ -212,6 +212,7 @@ def github_ci():
     ])
     takeaway("Nothing reaches main without green CI and a second pair of eyes.")
     backup(("github_pr.png", "GitHub: a pull request with its CI checks and review"),
+           ("github_pr_checks.png", "GitHub: approved, 4 checks passed, merged into main"),
            ("dagshub_data_shari.png", "DagsHub: the data folders versioned with DVC"),
            ("dagshub_data.png", "DagsHub: the data on DagsHub"))
 
