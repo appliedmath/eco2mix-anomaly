@@ -207,6 +207,8 @@ def github_ci():
                                  "dvc pull: the same data for everyone"], "teal"),
     ])
     takeaway("Nothing reaches main without green CI and a second pair of eyes.")
+    backup(("github_pr.png", "GitHub: a pull request with its CI checks and review"),
+           ("dagshub_data.png", "DagsHub: the data folders versioned with DVC"))
 
 
 def model_mlflow():
@@ -222,7 +224,7 @@ def model_mlflow():
     left, right = st.columns([3, 2])
     with left:
         st.markdown(
-            "**Three detectors, same events, K = 4** (champion, version 21)\n\n"
+            "**Three detectors, same events, K = 4** (champion, version 22)\n\n"
             "| Detector | Recall | False alarms / week |\n|---|---|---|\n"
             "| **MSTL (ours)** | **0.72** | **0.45** |\n"
             "| Same half-hour last week | 0.20 | 0.44 |\n"
@@ -232,7 +234,9 @@ def model_mlflow():
         boxes([("Promote-or-reject gate", [
             "recall not lower", "false alarms at most +10 %",
             "live model = alias <b>@champion</b>", "rollback = move the alias"], "blue")])
-    backup(("mlflow_compare.png", "MLflow: the detector comparison, 15 runs"))
+    backup(("mlflow_compare.png", "MLflow: the detector comparison, 15 runs"),
+           ("mlflow_rejected.png", "MLflow: a run rejected by the gate (K = 2), never registered"),
+           ("mlflow_registry.png", "MLflow registry: version 22 with the alias champion"))
     takeaway("A new model goes live only if it is not worse, and going back is one alias move.")
 
 
@@ -276,7 +280,8 @@ def airflow():
         ("296", "days caught up", "in one run, after 2 days off", "purple"),
         ("11 Nov", "Armistice Day", "flagged the same night", "orange"),
     ])
-    backup(("airflow_grid.png", "Airflow: batch_dag runs, the red run of 8 November"))
+    backup(("airflow_grid.png", "Airflow: batch_dag runs, the red run of 8 November"),
+           ("airflow_retrain.png", "Airflow: retrain_dag runs, weekly and on demand"))
     takeaway("It runs by itself every night, and bad input stops before it reaches the model.")
 
 
@@ -345,7 +350,8 @@ def live_demo():
     ])
     takeaway("The operator only talks to the API: one door, one key.")
     backup(("operator_app_chart.png", "Operator app: the last 14 days"),
-           ("operator_app_day.png", "Operator app: was the 4th of November an anomaly?"))
+           ("operator_app_day.png", "Operator app: was the 4th of November an anomaly?"),
+           ("operator_app_admin.png", "Operator app: the admin tab"))
 
 
 def scaling():
