@@ -242,7 +242,8 @@ def model_mlflow():
             "live model = alias <b>@champion</b>", "rollback = move the alias"], "blue")])
     backup(("mlflow_compare.png", "MLflow: the detector comparison, 15 runs"),
            ("mlflow_rejected.png", "MLflow: a run rejected by the gate (K = 2), never registered"),
-           ("mlflow_registry.png", "MLflow registry: version 22 with the alias champion"))
+           ("mlflow_registry.png", "MLflow registry: version 22 with the alias champion"),
+           ("mlflow_signature.png", "MLflow: the model signature, inputs and outputs"))
     takeaway("A new model goes live only if it is not worse, and going back is one alias move.")
 
 
