@@ -119,7 +119,10 @@ def takeaway(text: str) -> None:
 
 
 def intro():
-    st.title("Anomaly detection on the French electricity grid")
+    head, logo = st.columns([6, 1], vertical_alignment="center")
+    head.title("Anomaly detection on the French electricity grid")
+    if (ASSETS / "liora_logo.png").exists():
+        logo.image(str(ASSETS / "liora_logo.png"), width=140)
     st.markdown("#### Fatemeh (Shari) Tayebi & Mahboubeh (Mina) Nadaf")
     st.markdown("Mentor: Kilyan Poilly · MLOps, November 2026")
     st.caption("Mina & Shari · 2 min")
@@ -438,7 +441,14 @@ def future():
                   on_click=lambda: st.session_state.update(show_thanks=True))
 
 
-pages = [st.Page(f, title=t, url_path=f.__name__) for f, t in [
+ICONS = {"intro": ":material/rocket_launch:", "data": ":material/database:",
+         "architecture": ":material/account_tree:", "github_ci": ":material/merge:",
+         "model_mlflow": ":material/model_training:", "api": ":material/lock:",
+         "airflow": ":material/schedule:", "drift": ":material/query_stats:",
+         "monitoring": ":material/monitoring:", "live_demo": ":material/play_circle:",
+         "scaling": ":material/cloud:", "future": ":material/flag:"}
+
+pages = [st.Page(f, title=t.split('. ', 1)[-1], url_path=f.__name__, icon=ICONS.get(f.__name__)) for f, t in [
     (intro, "1. Introduction"), (data, "2. Data"), (architecture, "3. Architecture"),
     (github_ci, "4. Code, CI, DVC"), (model_mlflow, "5. Model & MLflow"), (api, "6. API, security, ethics"),
     (airflow, "7. Airflow"), (drift, "8. Quality & drift"), (monitoring, "9. Monitoring"),
